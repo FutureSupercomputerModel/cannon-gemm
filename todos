@@ -1,0 +1,4 @@
+1. add energy model
+2. add pe arr to arr transfers besides macs and dram accesses
+3. BERT
+4. each processor has 20MB
