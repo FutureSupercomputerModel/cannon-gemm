@@ -1,16 +1,16 @@
 import math
-def cannon_gemm(m,k,n):
-    dram_bw = 64.0 #DRAM bandwidth, element per cycle
-    alpha = 1.0 #time to set up connection
-    mesh_bw = 64.0 #mesh bandwidth, elements per cycle
-    beta = 1.0/mesh_bw #time to send 1 element
+import arch
+def cannon_gemm(m,k,n, arch: arch.Arch):
+    dram_bw = arch.dram_bw #DRAM bandwidth, element per cycle
+    alpha = arch.alpha #time to set up connection
+    beta = arch.beta #time to send 1 element
 
-    mesh_H = 10.0
-    mesh_W = 10.0
-    p=mesh_H*mesh_W #processor count
-    pe_arr_H = 9.0
-    pe_arr_W = 9.0
-    eta = 1/(pe_arr_H*pe_arr_W) #time to complete 1 multiply-add
+    mesh_H = arch.mesh_H
+    mesh_W = arch.mesh_W
+    p=arch.p #processor count
+    pe_arr_H = arch.pe_arr_H
+    pe_arr_W = arch.pe_arr_W
+    eta = arch.eta #time to complete 1 multiply-add
 
     # pad m to be multiple of mesh_H * pe_arr_H
     m = math.ceil(m/(mesh_H*pe_arr_H)) * mesh_H * pe_arr_H
