@@ -1,4 +1,5 @@
 import math
+import numpy as np
 class Arch:
     #DRAM
     dram_bw = 64.0 #DRAM bandwidth, element per ns
@@ -40,7 +41,6 @@ class Arch:
         return (self.pe_arr_dim*scale_up_factor, self.pe_arr_dim*scale_up_factor, self.pe_arr_dim*scale_up_factor)
 
     def cannon_gemm(self, m,k,n):
-       
         # pad m to be multiple of mesh_dim * pe_arr_dim
         m = math.ceil(m/(self.mesh_dim*self.pe_arr_dim)) * self.mesh_dim * self.pe_arr_dim
         # pad n to be multiple of mesh_dim * pe_arr_dim
@@ -73,6 +73,20 @@ class Arch:
             print(f"send: B is the bottleneck, T_send_A={T_send_A}, T_send_B={T_send_B}")
         T_store = self.alpha+max(m*n/self.dram_bw, m*n/self.p/self.buffer_bw)
         return (T_prep, T_compute, T_send, T_store)
+    
+    def cannon_gemm_tiled(self, m,k,n):
+        (m_tile, k_tile, n_tile) = tuple(self.mesh_dim * np.array(self.get_max_leaf_gemm_size()))
+        # (m_tile, k_tile, n_tile) = (m,k,n)
+        iteration = math.ceil(m/m_tile)*math.ceil(k/k_tile)*math.ceil(n/n_tile)
+        if m_tile>m and k_tile>k and n_tile>n: #no need to tile
+            m_tile=m
+            k_tile=k
+            n_tile=n
+        print(f"tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+        (T_prep, T_compute, T_send, T_store)=self.cannon_gemm(m_tile, k_tile, n_tile)
+        print(f"ns for each tiled problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
+        return [T_prep*iteration, T_compute*iteration, T_send*iteration, T_store*iteration]
+
     
     
     def print(self):

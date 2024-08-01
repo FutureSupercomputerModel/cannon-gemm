@@ -15,18 +15,9 @@ def top_level_gemm(m,k,n, arch: arch.Arch):
     print("=====================================")
     arch.print()
     print(f"original problem: {m},{k},{n}")
-    (m_tile, k_tile, n_tile) = tuple(arch.mesh_dim * np.array(arch.get_max_leaf_gemm_size()))
-    # (m_tile, k_tile, n_tile) = (m,k,n)
-    iteration = math.ceil(m/m_tile)*math.ceil(k/k_tile)*math.ceil(n/n_tile)
-    if m_tile>m and k_tile>k and n_tile>n: #no need to tile
-        m_tile=m
-        k_tile=k
-        n_tile=n
-    print(f"tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
-    (T_prep, T_compute, T_send, T_store)=arch.cannon_gemm(m_tile, k_tile, n_tile)
-    print(f"ns for each tiled problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
-    print(f"ns for original problem: T_prep: {T_prep*iteration}, T_compute: {T_compute*iteration}, T_send: {T_send*iteration}, T_store: {T_store*iteration}")
-    return [T_prep*iteration, T_compute*iteration, T_send*iteration, T_store*iteration]
+    (T_prep, T_compute, T_send, T_store)=arch.cannon_gemm_tiled(m, k, n)
+    print(f"ns for each problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
+    return [T_prep, T_compute, T_send, T_store]
     print("=====================================")
 
 def top_level_gemm_leaf(m,k,n, arch: arch_leaf_specified.Arch_leaf_specified):
@@ -53,9 +44,9 @@ gemm_sizes = [(90*200,90*200,90*200),
 # top_level_gemm(m,k,n, cmos_arch)
 # # top_level_gemm_leaf(m,k,n, imec_arch_leaf_specified)
 gemm_times = []
-# for (m,k,n) in gemm_sizes:
-#     gemm_times.append(top_level_gemm(m,k,n, imec_arch))
-# print(gemm_times)
+for (m,k,n) in gemm_sizes:
+    gemm_times.append(top_level_gemm(m,k,n, imec_arch))
+print(gemm_times)
 
 (m,k,n) = gemm_sizes[-1]
 imec_archs = [
