@@ -91,3 +91,17 @@ class Arch:
     
     def print(self):
         print(f"dram_bw={self.dram_bw}, alpha={self.alpha}, mesh_bw={self.mesh_bw}, mesh_dim={self.mesh_dim}, mesh_dim={self.mesh_dim}, pe_arr_dim={self.pe_arr_dim}, pe_arr_dim={self.pe_arr_dim}, pe_freq={self.pe_freq}, buffer_size={self.buffer_size}")
+
+
+cmos_arch = Arch(dram_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
+# cmos_arch_ideal = arch.Arch(dram_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
+imec_arch = Arch(dram_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
+
+def top_level_gemm(m,k,n, arch: Arch):
+    print("=====================================")
+    arch.print()
+    print(f"original problem: {m},{k},{n}")
+    (T_prep, T_compute, T_send, T_store)=arch.cannon_gemm_tiled(m, k, n)
+    print(f"ns for each problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
+    return [T_prep, T_compute, T_send, T_store]
+    print("=====================================")

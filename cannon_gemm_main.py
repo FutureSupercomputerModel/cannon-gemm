@@ -1,37 +1,17 @@
 import numpy as np
 import arch
+from arch import top_level_gemm
 import arch_leaf_specified
 import math
-cmos_arch = arch.Arch(dram_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
-# cmos_arch_ideal = arch.Arch(dram_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
-imec_arch = arch.Arch(dram_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
+
 # ideal_arch_200x200 = arch.Arch(dram_bw=64.0*90.0*2*10, alpha=1.0, mesh_bw=64.0 * 24 , mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024)
-imec_arch_leaf_specified = arch_leaf_specified.Arch_leaf_specified(dram_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, leaf_dim=1869, leaf_time=1869*1869*1869/200.0/200.0/30.0)
+
 
 # tiled problem constraints:
 # if leaf problem is specified, m, k, n should be the multiple of mesh_dim*leaf_dim
 # if leaf problem is not specified, m, k, n should be the multiple of mesh_dim*pe_arr_dim
-def top_level_gemm(m,k,n, arch: arch.Arch):
-    print("=====================================")
-    arch.print()
-    print(f"original problem: {m},{k},{n}")
-    (T_prep, T_compute, T_send, T_store)=arch.cannon_gemm_tiled(m, k, n)
-    print(f"ns for each problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
-    return [T_prep, T_compute, T_send, T_store]
-    print("=====================================")
 
-def top_level_gemm_leaf(m,k,n, arch: arch_leaf_specified.Arch_leaf_specified):
-    print("=====================================")
-    arch.print()
-    print(f"original problem: {m},{k},{n}")
-    (m_tile, k_tile, n_tile) = (m,k,n)
-    iteration = m/m_tile*k/k_tile*n/n_tile
-    print(f"tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
-    (T_prep, T_compute, T_send, T_store)=arch.cannon_gemm(m_tile, k_tile, n_tile)
-    print(f"ns for each tiled problem: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
-    print(f"ns for original problem: T_prep: {T_prep*iteration}, T_compute: {T_compute*iteration}, T_send: {T_send*iteration}, T_store: {T_store*iteration}")
-    return [T_prep*iteration, T_compute*iteration, T_send*iteration, T_store*iteration]
-    print("=====================================")
+
 
 gemm_sizes = [(90*200,90*200,90*200),
               (90*200*2,90*200*2,90*200*2),
@@ -45,7 +25,7 @@ gemm_sizes = [(90*200,90*200,90*200),
 # # top_level_gemm_leaf(m,k,n, imec_arch_leaf_specified)
 gemm_times = []
 for (m,k,n) in gemm_sizes:
-    gemm_times.append(top_level_gemm(m,k,n, imec_arch))
+    gemm_times.append(top_level_gemm(m,k,n, arch.imec_arch))
 print(gemm_times)
 
 (m,k,n) = gemm_sizes[-1]
@@ -63,5 +43,5 @@ imec_archs = [
 ]
 gemm_times_arch_study = []
 for imec_arch in imec_archs:
-    gemm_times_arch_study.append(top_level_gemm(m,k,n, imec_arch))
+    gemm_times_arch_study.append(arch.top_level_gemm(m,k,n, imec_arch))
 print(gemm_times_arch_study)
