@@ -1,6 +1,6 @@
 import math
-import arch
-def cannon_gemm(m,k,n, arch: arch.Arch):
+import Arch
+def cannon_gemm(m,k,n, arch: Arch.Arch):
     dram_bw = arch.dram_bw #DRAM bandwidth, element per cycle
     alpha = arch.alpha #time to set up connection
     beta = arch.beta #time to send 1 element

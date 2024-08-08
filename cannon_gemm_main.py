@@ -1,6 +1,6 @@
 import numpy as np
-import arch
-from arch import top_level_gemm
+import Arch
+from Arch import top_level_gemm
 import arch_leaf_specified
 import math
 
@@ -25,23 +25,23 @@ gemm_sizes = [(90*200,90*200,90*200),
 # # top_level_gemm_leaf(m,k,n, imec_arch_leaf_specified)
 gemm_times = []
 for (m,k,n) in gemm_sizes:
-    gemm_times.append(top_level_gemm(m,k,n, arch.imec_arch))
+    gemm_times.append(top_level_gemm(m,k,n, Arch.imec_arch))
 print(gemm_times)
 
 (m,k,n) = gemm_sizes[-1]
 imec_archs = [
-    arch.Arch(dram_bw=7812.5, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=4.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=15625, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=6.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=31250, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=8.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=15625, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=11.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=31250, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=16.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=62500, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=23.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=125000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=32.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=250000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=45.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=500000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=64.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
-    arch.Arch(dram_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
+    Arch.Arch(dram_bw=7812.5, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=4.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=15625, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=6.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=31250, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=8.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=15625, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=11.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=31250, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=16.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=62500, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=23.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=125000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=32.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=250000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=45.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=500000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=64.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3),
+    Arch.Arch(dram_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
 ]
 gemm_times_arch_study = []
 for imec_arch in imec_archs:
-    gemm_times_arch_study.append(arch.top_level_gemm(m,k,n, imec_arch))
+    gemm_times_arch_study.append(Arch.top_level_gemm(m,k,n, imec_arch))
 print(gemm_times_arch_study)
