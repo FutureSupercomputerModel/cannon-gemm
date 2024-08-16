@@ -1,8 +1,9 @@
 from GEMM.arch_base import Arch_base
+from Leaf_Modeling.src.leaf_interface import run_leaf_modeling
 import math
 class Leaf(Arch_base):
     pe_arr_dim = 200.0
-    pe_freq = 1.0 #GHz
+    pe_freq = 4.0 #GHz
     buffer_size = 20.0*1024*1024 #20MB
     buffer_bw = 64.0 #element per ns
     nJ_per_mac = 1.0
@@ -24,10 +25,17 @@ class Leaf(Arch_base):
         M = math.ceil(M/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
         K = math.ceil(K/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
         N = math.ceil(N/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
+
+        leaf_tech = 'cmos-gemm-7nm'
+        energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
+        leaf_time = cycles / self.pe_freq #ns
+        energy = energy * 1e9 #nJ
+        print(f"Leaf energy: {energy}, Leaf time (ns): {leaf_time}")
         #report buffer usage
         print(f"buffer usage: {M*K+K*N+M*N}/{self.buffer_size}")
         assert M*K+K*N+M*N<=self.buffer_size
-        return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw), M*K*N*self.nJ_per_mac
+        # return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw), M*K*N*self.nJ_per_mac
+        return leaf_time, energy
     
     def get_max_gemm_size(self):
         min_problem_size_per_leaf = self.matrix_block_dim_min*self.matrix_block_dim_min*3
