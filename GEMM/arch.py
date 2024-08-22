@@ -15,6 +15,8 @@ class Arch(Arch_base):
     matrix_block_dim_min = None
     nJ_per_Byte = 1.0
 
+    bytes_per_element = 2
+
     # bottleneck flags
     T_send_bottleneck = None
 
@@ -33,7 +35,7 @@ class Arch(Arch_base):
         
     def get_max_gemm_size(self):
         min_problem_dim = self.mesh_dim * self.child_arch.matrix_block_dim_min
-        min_problem_size = min_problem_dim**2*3
+        min_problem_size = min_problem_dim**2*3*self.bytes_per_element
         scale_up_factor = math.floor(math.sqrt(self.buffer_size / min_problem_size))
         return (min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor)
 
@@ -82,7 +84,7 @@ class Arch(Arch_base):
 
     def temp_tile_gemm(self, m,k,n):
         #temporal tiling
-        assert m*k+n*k+m*n < self.buffer_size, f"problem size exceeds buffer size: {m*k+n*k+m*n} > {self.buffer_size}"
+        assert (m*k+n*k+m*n)*self.bytes_per_element <= self.buffer_size, f"problem size exceeds buffer size: {(m*k+n*k+m*n)*self.bytes_per_element} > {self.buffer_size}"
         (m_tile, k_tile, n_tile) = tuple(self.mesh_dim * np.array(self.child_arch.get_max_gemm_size()))
         # (m_tile, k_tile, n_tile) = (m,k,n)
         iteration = math.ceil(m/m_tile)*math.ceil(k/k_tile)*math.ceil(n/n_tile)
@@ -95,7 +97,7 @@ class Arch(Arch_base):
     
     def get_gemm_latency_energy(self, m,k,n):
         #report buffer usage
-        print(f"buffer usage: {m*k+k*n+m*n}/{self.buffer_size}")
+        print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size}")
         (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile)
         return T_tile*iteration, E_tile*iteration
