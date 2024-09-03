@@ -12,7 +12,7 @@ class Arch(Arch_base):
     mesh_dim = 90.0
     p=mesh_dim*mesh_dim #processor count
     child_arch:Arch_base = None
-    matrix_block_dim_min = None
+    min_gemm_size = None
     nJ_per_Byte = 1.0
 
     bytes_per_element = 2
@@ -31,31 +31,33 @@ class Arch(Arch_base):
         self.p = mesh_dim*mesh_dim
         self.nJ_per_Byte = nJ_per_Byte
         self.child_arch = child_arch
-        self.matrix_block_dim_min = self.mesh_dim * child_arch.matrix_block_dim_min
+        self.min_gemm_size = self.mesh_dim * child_arch.min_gemm_size
         
     def get_max_gemm_size(self):
-        min_problem_dim = self.mesh_dim * self.child_arch.matrix_block_dim_min
+        min_problem_dim = self.mesh_dim * self.child_arch.min_gemm_size
         min_problem_size = min_problem_dim**2*3*self.bytes_per_element
         scale_up_factor = math.floor(math.sqrt(self.buffer_size / min_problem_size))
         return (min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor)
 
-    def spatial_tile_gemm(self, m_in,k_in,n_in):
+    def spatial_tile_gemm(self, m_in,k_in,n_in,debug:bool):
         # pad m to be multiple of mesh_dim * pe_arr_dim
-        m = math.ceil(m_in/(self.mesh_dim*self.child_arch.matrix_block_dim_min)) * self.mesh_dim * self.child_arch.matrix_block_dim_min
+        m = math.ceil(m_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
         # pad n to be multiple of mesh_dim * pe_arr_dim
-        n = math.ceil(n_in/(self.mesh_dim*self.child_arch.matrix_block_dim_min)) * self.mesh_dim * self.child_arch.matrix_block_dim_min
+        n = math.ceil(n_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
         # pad k to be multiple of mesh_dim * pe_arr_dim
-        k = math.ceil(k_in/(self.mesh_dim*self.child_arch.matrix_block_dim_min)) * self.mesh_dim * self.child_arch.matrix_block_dim_min
-        print(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
+        k = math.ceil(k_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
+        if debug:
+            print(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
         #tile m, n to leaf problems
         m_leaf = m/self.mesh_dim
         k_leaf = k/self.mesh_dim
         n_leaf = n/self.mesh_dim
-        print(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
+        if debug:
+            print(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
         return (m, k, n, m_leaf, k_leaf, n_leaf)
     
     def cannon_gemm(self, m_in,k_in,n_in):
-        m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in)
+        m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in,debug=True)
 
         T_prep_A = self.alpha + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
         T_prep_B = self.alpha + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
@@ -95,17 +97,75 @@ class Arch(Arch_base):
         print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
+    def temp_tile_gemm_general(self, m,k,n):
+        #general temporal tiling, works for unsquare matrices
+        #initialize tiling factors
+        p=m
+        q=k
+        r=n
+        p_opt = p
+        q_opt = q
+        r_opt = r
+        class ExitAllLoops(Exception):
+            pass
+        #p=q=r
+        try:
+            for pqr in range(1,int(max(m,k,n))+1):
+                if pqr>p_opt and pqr>q_opt and pqr>r_opt:
+                    raise ExitAllLoops
+                m_tile = math.ceil(m/pqr)
+                k_tile = math.ceil(k/pqr)
+                n_tile = math.ceil(n/pqr)
+                m_pad,k_pad,n_pad,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_tile,k_tile,n_tile,debug=False)
+                if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf)*self.bytes_per_element <= self.child_arch.buffer_size and pqr*pqr*pqr<p_opt*q_opt*r_opt:
+                    #valid pqr
+                    p_opt=pqr
+                    q_opt=pqr
+                    r_opt=pqr
+        except ExitAllLoops:
+            pass  # Handle the exception and continue execution
+
+        try:
+            for p in range(1,int(m)+1):
+                if p > p_opt*q_opt*r_opt:
+                    break
+                for q in range(1,int(k)+1):
+                    if p*q > p_opt*q_opt*r_opt:
+                        break
+                    for r in range(1,int(n)+1):
+                        if p>p_opt and q>q_opt and r>r_opt:
+                            raise ExitAllLoops
+                        if p*q*r > p_opt*q_opt*r_opt:
+                            break
+                        m_tile = math.ceil(m/p)
+                        k_tile = math.ceil(k/q)
+                        n_tile = math.ceil(n/r)
+                        m_pad,k_pad,n_pad,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_tile,k_tile,n_tile,debug=False)
+                        if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf)*self.bytes_per_element <= self.child_arch.buffer_size and p*q*r<p_opt*q_opt*r_opt:
+                            #valid pqr
+                            p_opt=p
+                            q_opt=q
+                            r_opt=r
+        except ExitAllLoops:
+            pass  # Handle the exception and continue execution
+        m_tile = math.ceil(m/p_opt)
+        k_tile = math.ceil(k/q_opt)
+        n_tile = math.ceil(n/r_opt)
+        iteration = p_opt*q_opt*r_opt
+        print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+        return (m_tile, k_tile, n_tile, iteration)
+    
     def get_gemm_latency_energy(self, m,k,n):
         #report buffer usage
         print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size}")
-        (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n)
+        (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile)
         return T_tile*iteration, E_tile*iteration
 
     
     
     def print(self):
-        print(f"buffer_size={self.buffer_size}, buffer_bw={self.buffer_bw}, alpha={self.alpha}, mesh_bw={self.mesh_bw}, mesh_dim={self.mesh_dim}, matrix_block_dim_min={self.matrix_block_dim_min}")
+        print(f"buffer_size={self.buffer_size}, buffer_bw={self.buffer_bw}, alpha={self.alpha}, mesh_bw={self.mesh_bw}, mesh_dim={self.mesh_dim}, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 
@@ -117,8 +177,9 @@ class Arch(Arch_base):
 
 
 def top_level_gemm(m,k,n, arch: Arch):
-    print("=====================================")
+    print("================Arch=====================")
     arch.print()
+    print("----------------Problem---------------------")
     print(f"top level problem: {m},{k},{n}")
     T_top, E_total=arch.get_gemm_latency_energy(m, k, n)
     print(f"ns for top level problem: {T_top}")
