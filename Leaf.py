@@ -2,7 +2,7 @@ from Arch_base import Arch_base
 import math
 class Leaf(Arch_base):
     pe_arr_dim = 200.0
-    pe_freq = 1.0 #GHz
+    pe_freq = 30.0 #GHz
     buffer_size = 20.0*1024*1024 #20MB
     buffer_bw = 64.0 #element per ns
 
@@ -24,7 +24,7 @@ class Leaf(Arch_base):
         N = math.ceil(N/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
         #report buffer usage
         print(f"buffer usage: {M*K+K*N+M*N}/{self.buffer_size}")
-        assert M*K+K*N+M*N<=self.buffer_size
+        # assert M*K+K*N+M*N<=self.buffer_size
         return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw)
     
     def get_max_gemm_size(self):

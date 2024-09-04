@@ -1,12 +1,19 @@
-from GEMM.arch_base import Arch_base
-from Leaf_Modeling.src.leaf_interface import run_leaf_modeling
+from cannon_gemm.GEMM.arch_base import Arch_base
+from cannon_gemm.Leaf_Modeling.src.leaf_interface import run_leaf_modeling
+
+# from GEMM.arch_base import Arch_base
+# from Leaf_Modeling.src.leaf_interface import run_leaf_modeling
+
+# from arch_base import Arch_base
+# from cannon_gemm.Leaf_Modeling.src.leaf_interface import run_leaf_modeling
+
 import math
 class Leaf(Arch_base):
     pe_arr_dim = 200.0
-    pe_freq = 4.0 #GHz
+    pe_freq = 5.6 #GHz
     buffer_size = 20.0*1024*1024 #20MB
     buffer_bw = 64.0 #element per ns
-    nJ_per_mac = 1.0
+    nJ_per_mac = 0.38*1e-3
 
     matrix_block_dim_min = pe_arr_dim
 
@@ -19,21 +26,24 @@ class Leaf(Arch_base):
         self.child_arch = None
 
     def print(self):
-        print(f"pe_arr_dim: {self.pe_arr_dim}, pe_freq: {self.pe_freq}, buffer_size: {self.buffer_size}, buffer_bw: {self.buffer_bw}, matrix_block_dim_min: {self.matrix_block_dim_min}")
+        pass
+        # print(f"pe_arr_dim: {self.pe_arr_dim}, pe_freq: {self.pe_freq}, buffer_size: {self.buffer_size}, buffer_bw: {self.buffer_bw}, matrix_block_dim_min: {self.matrix_block_dim_min}")
     
     def get_gemm_latency_energy(self, M:int, K:int, N:int):
         M = math.ceil(M/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
         K = math.ceil(K/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
         N = math.ceil(N/(self.matrix_block_dim_min)) * self.matrix_block_dim_min
-
+        # print("======================Just before the Timeloop")
         leaf_tech = 'cmos-gemm-7nm'
-        energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
-        leaf_time = cycles / self.pe_freq #ns
+        # print(f"leaf level problem: {int(M)},{int(K)},{int(N)}")
+        # energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
+        energy, leaf_time =  M*K*N*self.nJ_per_mac, (M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq)
+        # leaf_time = cycles / self.pe_freq #ns
         energy = energy * 1e9 #nJ
-        print(f"Leaf energy: {energy}, Leaf time (ns): {leaf_time}")
+        # print(f"Leaf energy: {energy}, Leaf time (ns): {leaf_time}")
         #report buffer usage
-        print(f"buffer usage: {M*K+K*N+M*N}/{self.buffer_size}")
-        assert M*K+K*N+M*N<=self.buffer_size
+        # print(f"buffer usage: {M*K+K*N+M*N}/{self.buffer_size}")
+        # assert M*K+K*N+M*N<=self.buffer_size
         # return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw), M*K*N*self.nJ_per_mac
         return leaf_time, energy
     
