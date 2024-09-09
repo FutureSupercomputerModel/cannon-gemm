@@ -193,16 +193,16 @@ class Arch(Arch_base):
 
 
 
-def top_level_gemm(m,k,n, arch: Arch):
-    print("================Arch=====================")
-    print("----------------Problem---------------------")
-    print(f"top level problem: {m},{k},{n}")
-    T_top, E_total=arch.get_gemm_latency_energy(m, k, n)
-    # T_top, E_total=10000, 100
-    # print(f"ns for top level problem: {T_top}")
-    # print(f"nJ for top level problem: {E_total}")
-    # print("=====================================")
-    return T_top*1e-9,E_total*1e-9
+    def top_level_gemm(self, m,k,n):
+        print("================Arch=====================")
+        print("----------------Problem---------------------")
+        print(f"top level problem: {m},{k},{n}")
+        T_top, E_total=self.get_gemm_latency_energy(m, k, n)
+        # T_top, E_total=10000, 100
+        # print(f"ns for top level problem: {T_top}")
+        # print(f"nJ for top level problem: {E_total}")
+        # print("=====================================")
+        return T_top*1e-9,E_total*1e-9
 
 # hier_arch_leaf = Leaf(pe_arr_dim=200.0, pe_freq=30, buffer_size=20.0*1024*1024, buffer_bw=64.0, nJ_per_mac=1.0)
 # accelerator = Arch(buffer_size=1000*1024*1024*1024, buffer_bw=(1000000*1024*1024*1024)/1, alpha=0, mesh_bw=30000*1024*1024*1024, mesh_dim=9, nJ_per_Byte=1.0, child_arch=hier_arch_leaf)

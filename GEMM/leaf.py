@@ -29,6 +29,9 @@ class Leaf(Arch_base):
     def print(self):
         print(f"pe_arr_dim: {self.pe_arr_dim}, pe_freq: {self.pe_freq}, buffer_size: {self.buffer_size}, buffer_bw: {self.buffer_bw}, min_gemm_size: {self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
     
+    def run_leaf_modeling_fallback(self, M , K, N):
+        return M*K*N*self.nJ_per_mac, max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw)
+
     def get_gemm_latency_energy(self, M:int, K:int, N:int):
         M = math.ceil(M/(self.min_gemm_size)) * self.min_gemm_size
         K = math.ceil(K/(self.min_gemm_size)) * self.min_gemm_size
@@ -36,7 +39,8 @@ class Leaf(Arch_base):
 
         # leaf_tech = 'cmos-gemm-7nm'
         # energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
-        energy, cycles = run_leaf_modeling_fallback(self, M, K, N)
+        print(f"Leaf Problem : {int(M)} {int(K)} {int(N)}")
+        energy, cycles = self.run_leaf_modeling_fallback( int(M), int(K), int(N))
         leaf_time = cycles / self.pe_freq #ns
         energy = energy * 1e9 #nJ
         # print(f"Leaf energy: {energy}, Leaf time (ns): {leaf_time}")
