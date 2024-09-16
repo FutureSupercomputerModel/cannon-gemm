@@ -3,17 +3,17 @@ import numpy as np
 from GEMM.arch_base import Arch_base
 from GEMM.leaf import Leaf
 class Arch(Arch_base):
-    #Buffer
-    buffer_size = 8.0*1024*1024*1024 #8GB
-    buffer_bw = 64.0 #buffer bandwidth, element per ns. This buffer is shared by mesh_dim*mesh_dim processors
-    #interconnect
-    alpha = 1.0 #ns to set up connection
-    mesh_bw = 64.0 #mesh bandwidth, elements per ns
-    mesh_dim = 90.0
-    p=mesh_dim*mesh_dim #processor count
-    child_arch:Arch_base = None
-    min_gemm_size = None
-    nJ_per_Byte = 1.0
+    # #Buffer
+    # buffer_size = 8.0*1024*1024*1024 #8GB
+    # buffer_bw = 64.0 #buffer bandwidth, element per ns. This buffer is shared by mesh_dim*mesh_dim processors
+    # #interconnect
+    # ns_setup_interconnect = 1.0 #ns to set up connection
+    # mesh_bw = 64.0 #mesh bandwidth, elements per ns
+    # mesh_dim = 90.0
+    # p=mesh_dim*mesh_dim #processor count
+    # child_arch:Arch_base = None
+    # min_gemm_size = None
+    # nJ_per_Byte = 1.0
 
     bytes_per_element = 2
 
@@ -22,14 +22,31 @@ class Arch(Arch_base):
 
 
 
-    def __init__(self, buffer_size:float, buffer_bw:float, alpha:float, mesh_bw:float, mesh_dim:float, nJ_per_Byte:float, child_arch:Arch_base) -> None:
-        self.buffer_size = buffer_size
-        self.buffer_bw = buffer_bw
-        self.alpha = alpha
-        self.mesh_bw = mesh_bw
+    def __init__(self, mesh_dim:float, mesh_bw_GBps:float, buffer_size_bytes:float, buffer_bw_GBps:float, 
+                 mesh_nJ_per_bit:float, buffer_nJ_per_bit:float, 
+                 child_arch:Arch_base,
+                 ns_setup_interconnect:float=0,
+                 roofline:bool=True,
+                 ) -> None:
+        #arch params
         self.mesh_dim = mesh_dim
+        self.mesh_bw_GBps = mesh_bw_GBps
+        self.buffer_size_bytes = buffer_size_bytes
+        self.buffer_bw_GBps = buffer_bw_GBps
+        
+
+        #tech params
+        self.mesh_nJ_per_bit = mesh_nJ_per_bit
+        self.buffer_nJ_per_bit = buffer_nJ_per_bit
+
+        self.ns_setup_interconnect = ns_setup_interconnect
+
+        self.buffer_size = self.buffer_size_bytes/self.bytes_per_element # #elements
+        self.buffer_bw = self.buffer_bw_GBps/self.bytes_per_element #elements per ns
+        self.mesh_bw = self.mesh_bw_GBps/self.bytes_per_element #elements per ns
         self.p = mesh_dim*mesh_dim
-        self.nJ_per_Byte = nJ_per_Byte
+
+        self.roofline = roofline
         self.child_arch = child_arch
         self.min_gemm_size = self.mesh_dim * child_arch.min_gemm_size
         
@@ -56,27 +73,35 @@ class Arch(Arch_base):
             print(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
         return (m, k, n, m_leaf, k_leaf, n_leaf)
     
-    def cannon_gemm(self, m_in,k_in,n_in):
-        m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in,debug=True)
+    def cannon_gemm(self, m_in,k_in,n_in,debug:bool):
+        m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in,debug)
 
-        T_prep_A = self.alpha + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
-        T_prep_B = self.alpha + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
+        T_prep_A = self.ns_setup_interconnect + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
+        T_prep_B = self.ns_setup_interconnect + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
         T_prep = max(T_prep_A+T_prep_B, (m*k+k*n)/self.buffer_bw )#time to load A and B, potentially bound by dram bandwidth
-        T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf))
+        T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug))
         
-        T_send_A = self.mesh_dim*(self.alpha+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
-        T_send_B = self.mesh_dim*(self.alpha+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
+        T_send_A = self.mesh_dim*(self.ns_setup_interconnect+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
+        T_send_B = self.mesh_dim*(self.ns_setup_interconnect+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
         T_send = T_send_A + T_send_B
         if(T_send_A > T_send_B):
             self.T_send_bottleneck = "A"
         elif(T_send_A < T_send_B):
             self.T_send_bottleneck = "B"
-        T_store = self.alpha+max(m*n/self.buffer_bw, m*n/self.p/self.child_arch.buffer_bw)
-        latency = max(T_prep, T_compute, T_send, T_store)
+        T_store = self.ns_setup_interconnect+max(m*n/self.buffer_bw, m*n/self.p/self.child_arch.buffer_bw)
+        if self.roofline:
+            latency = max(T_prep, T_compute, T_send, T_store)
+        else:
+            latency = T_prep + T_compute + T_send + T_store
 
         #energy
-        E_prep = self.mesh_dim * (1+self.mesh_dim) * self.nJ_per_Byte * (m_leaf*k_leaf + k_leaf*n_leaf)/2.0
-        E_send = self.p * self.nJ_per_Byte * (m_leaf*k_leaf + k_leaf*n_leaf)
+        E_prep_buffer_read = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.buffer_nJ_per_bit*self.bytes_per_element*8.0
+        E_prep_child_buffer_write = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.child_arch.buffer_nJ_per_bit*self.bytes_per_element*8.0
+        E_prep_interconnect = self.mesh_dim * (1+self.mesh_dim) * self.mesh_nJ_per_bit * self.bytes_per_element * 8.0 * (m_leaf*k_leaf + k_leaf*n_leaf)/2.0
+        E_prep = E_prep_buffer_read + E_prep_child_buffer_write + E_prep_interconnect
+        E_send_child_buffer = self.p * self.child_arch.buffer_nJ_per_bit * 2 * (m_leaf*k_leaf + k_leaf*n_leaf) * self.bytes_per_element * 8.0
+        E_send_interconnect = self.p * self.mesh_nJ_per_bit * (m_leaf*k_leaf + k_leaf*n_leaf) * self.bytes_per_element * 8.0
+        E_send = E_send_child_buffer + E_send_interconnect
         E_total = E_prep + E_compute + E_send
 
         return latency, E_total
@@ -84,7 +109,7 @@ class Arch(Arch_base):
 
         
 
-    def temp_tile_gemm(self, m,k,n):
+    def temp_tile_gemm(self, m,k,n, debug):
         #temporal tiling
         assert (m*k+n*k+m*n)*self.bytes_per_element <= self.buffer_size, f"problem size exceeds buffer size: {(m*k+n*k+m*n)*self.bytes_per_element} > {self.buffer_size}"
         (m_tile, k_tile, n_tile) = tuple(self.mesh_dim * np.array(self.child_arch.get_max_gemm_size()))
@@ -94,10 +119,11 @@ class Arch(Arch_base):
             m_tile=m
             k_tile=k
             n_tile=n
-        print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+        if debug:
+            print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
-    def temp_tile_gemm_general(self, m,k,n):
+    def temp_tile_gemm_general(self, m,k,n, debug):
         #general temporal tiling, works for unsquare matrices
         #initialize tiling factors
         p=m
@@ -152,38 +178,42 @@ class Arch(Arch_base):
         k_tile = math.ceil(k/q_opt)
         n_tile = math.ceil(n/r_opt)
         iteration = p_opt*q_opt*r_opt
-        print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+        if debug:
+            print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
-    def get_gemm_latency_energy(self, m,k,n):
+    def get_gemm_latency_energy(self, m,k,n, debug:bool):
         #report buffer usage
-        print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size}")
-        (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n)
-        T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile)
+        if debug:
+            print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size_bytes}")
+        (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n, debug)
+        T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug)
         return T_tile*iteration, E_tile*iteration
 
     
     
     def print(self):
-        print(f"buffer_size={self.buffer_size}, buffer_bw={self.buffer_bw}, alpha={self.alpha}, mesh_bw={self.mesh_bw}, mesh_dim={self.mesh_dim}, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
+        print(f"mesh_dim={self.mesh_dim}, buffer_size={self.buffer_size_bytes}B, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 
 
-# cmos_arch = Arch(buffer_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
-# # cmos_arch_ideal = arch.Arch(buffer_bw=64.0*90.0*2, alpha=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
-# imec_arch = Arch(buffer_bw=1000000, alpha=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
+# cmos_arch = Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
+# # cmos_arch_ideal = arch.Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
+# imec_arch = Arch(buffer_bw=1000000, ns_setup_interconnect=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
 
 
 
-def top_level_gemm(m,k,n, arch: Arch):
-    print("================Arch=====================")
-    arch.print()
-    print("----------------Problem---------------------")
-    print(f"top level problem: {m},{k},{n}")
-    T_top, E_total=arch.get_gemm_latency_energy(m, k, n)
-    print(f"ns for top level problem: {T_top}")
-    print(f"nJ for top level problem: {E_total}")
-    print("=====================================")
-    return T_top
+def top_level_gemm(m,k,n, arch: Arch, debug:bool):
+    if debug:
+        print("================Arch=====================")
+        arch.print()
+        print("----------------Problem---------------------")
+        print(f"top level problem: {m},{k},{n}")
+    T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug)
+    if debug:
+        print(f"ns for top level problem: {T_top}")
+        print(f"nJ for top level problem: {E_total}")
+        print("=====================================")
+    return T_top, E_total
     
