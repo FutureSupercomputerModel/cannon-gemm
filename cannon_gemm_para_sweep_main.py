@@ -90,11 +90,14 @@ def exp(sys_arch:Sys_arch):
 
 max_processes = multiprocessing.cpu_count()
 print("Maximum number of processes:", max_processes)
-with Pool(max_processes) as p:
-    res = tqdm(p.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
-    for T_top, E_total in res:
-        list_T = np.append(list_T, T_top)
-        list_E = np.append(list_E, E_total)
+pool = Pool(max_processes)
+# res = tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
+res = list(tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)))
+print(f"finished all experiments")
+for T_top, E_total in res:
+    list_T = np.append(list_T, T_top)
+    list_E = np.append(list_E, E_total)
+# print(res)
 # for sys_arch in sys_arch_list:
 #     T_top, E_total = sys_arch.cannon_gemm(90*200*64,90*200*64,90*200*64, debug=False)
 #     list_T = np.append(list_T, T_top)
@@ -102,7 +105,7 @@ with Pool(max_processes) as p:
 #     finished_exps +=1
 #     if finished_exps%1000 == 0:
 #         print(f"{finished_exps}/{len(sys_arch_list)}")
-print(f"finished all experiments")
+
 
 matplotlib.use('agg')
 fig1 = plt.figure("Latency vs Energy")
