@@ -3,35 +3,35 @@ from GEMM.arch import Arch
 from GEMM.leaf import Leaf
 from GEMM.arch import top_level_gemm
 
-# list_leaf_pe_arr_dim = [64, 128, 200, 256]
-# list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
-# list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
-# list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
+list_leaf_pe_arr_dim = [64, 128, 200, 256]
+list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
+list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
+list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
 
-# list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
-# list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
-# list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
-# list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
+list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
+list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
+list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
+list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
 
-# list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
-# list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
-# list_node_buffer_size = ['8TB']
-# list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
-
-list_leaf_pe_arr_dim = [128, 200]
-list_leaf_buffer_size = ["10MB", "20MB"]
-list_leaf_buffer_width = [16, 32]#x is frequency
-list_leaf_pe_freq = [10.0, 30.0]
-
-list_blade_mesh_dim = [4.0, 9.0]
-list_blade_mesh_bw = ['120GBps', '240GBps']
-list_blade_buffer_size = ['4.0TB', '8.0TB']
-list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
-
-list_node_mesh_dim = [5.0, 10.0]
-list_node_mesh_bw = ['0.5PBps', '1PBps']
+list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
+list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
 list_node_buffer_size = ['8TB']
-list_node_buffer_bw = ['1.5PBps', '3.0PBps']
+list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
+
+# list_leaf_pe_arr_dim = [128, 200]
+# list_leaf_buffer_size = ["10MB", "20MB"]
+# list_leaf_buffer_width = [16, 32]#x is frequency
+# list_leaf_pe_freq = [10.0, 30.0]
+
+# list_blade_mesh_dim = [4.0, 9.0]
+# list_blade_mesh_bw = ['120GBps', '240GBps']
+# list_blade_buffer_size = ['4.0TB', '8.0TB']
+# list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
+
+# list_node_mesh_dim = [5.0, 10.0]
+# list_node_mesh_bw = ['0.5PBps', '1PBps']
+# list_node_buffer_size = ['8TB']
+# list_node_buffer_bw = ['1.5PBps', '3.0PBps']
 
 class Sys_arch:
     def __init__(self, leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -79,13 +79,19 @@ list_T = np.array([])
 list_E = np.array([])
 print(f"number of experiments: {len(sys_arch_list)}")
 finished_exps = 0
+import multiprocessing
 from multiprocessing import Pool
+from tqdm import tqdm
+
+
 def exp(sys_arch:Sys_arch):
     T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=False)
     return T_top, E_total
 
-with Pool(8) as p:
-    res = p.map(exp, sys_arch_list)
+max_processes = multiprocessing.cpu_count()
+print("Maximum number of processes:", max_processes)
+with Pool(max_processes) as p:
+    res = tqdm(p.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
     for T_top, E_total in res:
         list_T = np.append(list_T, T_top)
         list_E = np.append(list_E, E_total)
