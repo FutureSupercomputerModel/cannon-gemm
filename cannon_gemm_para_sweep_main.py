@@ -95,7 +95,10 @@ with Pool(8) as p:
 #     if finished_exps%1000 == 0:
 #         print(f"{finished_exps}/{len(sys_arch_list)}")
 print(f"finished all experiments")
-# matplotlib.use('agg')
+
+matplotlib.use('agg')
 plt.scatter(list_T, list_E)
-plt.show()
+plt.xlabel('Latency (ns)')
+plt.ylabel('Energy (nJ)')
+plt.savefig('cannon_gemm_para_sweep.pdf')
 
