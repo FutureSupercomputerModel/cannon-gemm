@@ -49,18 +49,19 @@ class Sys_arch:
         self.node_mesh_bw = node_mesh_bw
         self.node_buffer_size = node_buffer_size
         self.node_buffer_bw = node_buffer_bw
-        self.hier_arch_leaf = Leaf(pe_arr_dim=leaf_pe_arr_dim, 
-                      buffer_size=leaf_buffer_size, 
-                      buffer_bw = f'{leaf_buffer_width*leaf_pe_freq/8}GBps', 
-                      pe_freq=leaf_pe_freq, 
+        
+    def cannon_gemm(self, m, k, n, debug=False):
+        hier_arch_leaf = Leaf(pe_arr_dim=self.leaf_pe_arr_dim, 
+                      buffer_size=self.leaf_buffer_size, 
+                      buffer_bw = f'{self.leaf_buffer_width*self.leaf_pe_freq/8}GBps', 
+                      pe_freq=self.leaf_pe_freq, 
                       nJ_per_mac=14e-6, 
                       interconnect_nJ_per_bit=1e-8, 
                       buffer_nJ_per_bit=0.021e-6, 
                       bytes_per_element=2)
-        self.hier_arch_blade = Arch(mesh_dim=blade_mesh_dim, mesh_bw=blade_mesh_bw, buffer_size=blade_buffer_size, buffer_bw=blade_buffer_bw, mesh_nJ_per_bit=5e-7, buffer_nJ_per_bit=0.397e-3, child_arch=self.hier_arch_leaf)
-        self.hier_arch_node = Arch(mesh_dim=node_mesh_dim, mesh_bw=node_mesh_bw, buffer_size=node_buffer_size, buffer_bw=node_buffer_bw, mesh_nJ_per_bit=5e-6, buffer_nJ_per_bit=0.397e-3, child_arch=self.hier_arch_blade)
-    def cannon_gemm(self, m, k, n, debug=False):
-        T_top, E_total = top_level_gemm(m,k,n, self.hier_arch_node, debug=debug, general_tiling=False)
+        hier_arch_blade = Arch(mesh_dim=self.blade_mesh_dim, mesh_bw=self.blade_mesh_bw, buffer_size=self.blade_buffer_size, buffer_bw=self.blade_buffer_bw, mesh_nJ_per_bit=5e-7, buffer_nJ_per_bit=0.397e-3, child_arch=hier_arch_leaf)
+        hier_arch_node = Arch(mesh_dim=self.node_mesh_dim, mesh_bw=self.node_mesh_bw, buffer_size=self.node_buffer_size, buffer_bw=self.node_buffer_bw, mesh_nJ_per_bit=5e-6, buffer_nJ_per_bit=0.397e-3, child_arch=hier_arch_blade)
+        T_top, E_total = top_level_gemm(m,k,n, hier_arch_node, debug=debug, general_tiling=False)
         return T_top, E_total
 
 sys_arch_list = [Sys_arch(leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -73,13 +74,14 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+m,k,n = 90*200*64,90*200*64,90*200*64
 list_T = np.array([])
 list_E = np.array([])
 print(f"number of experiments: {len(sys_arch_list)}")
 finished_exps = 0
 from multiprocessing import Pool
 def exp(sys_arch:Sys_arch):
-    T_top, E_total = sys_arch.cannon_gemm(90*200*64,90*200*64,90*200*64, debug=False)
+    T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=False)
     return T_top, E_total
 
 with Pool(8) as p:
@@ -97,8 +99,21 @@ with Pool(8) as p:
 print(f"finished all experiments")
 
 matplotlib.use('agg')
+fig1 = plt.figure("Latency vs Energy")
 plt.scatter(list_T, list_E)
-plt.xlabel('Latency (ns)')
-plt.ylabel('Energy (nJ)')
-plt.savefig('cannon_gemm_para_sweep.pdf')
+plt.xlabel('Latency (s)')
+plt.ylabel('Energy (J)')
+plt.savefig('cannon_gemm_para_sweep_latency_energy.pdf')
 
+list_throughput = m*k*n/list_T*1e-9
+list_power = list_E/list_T
+fig2 = plt.figure("Throughput vs Power")
+plt.scatter(list_throughput, list_power)
+plt.xlabel('Throughput (TOPS/s)')
+plt.ylabel('Power (W)')
+plt.savefig('cannon_gemm_para_sweep_throughput_power.pdf')
+
+print(f"list_T: {list_T}")
+print(f"list_E: {list_E}")
+print(f"list_throughput: {list_throughput}")
+print(f"list_power: {list_power}")

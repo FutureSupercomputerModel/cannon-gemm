@@ -207,7 +207,7 @@ class Arch(Arch_base):
 # imec_arch = Arch(buffer_bw=1000000, ns_setup_interconnect=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
 
 
-
+#return time in s and energy in J
 def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
     if debug:
         print("================Arch=====================")
@@ -219,5 +219,5 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
         print(f"ns for top level problem: {T_top}")
         print(f"nJ for top level problem: {E_total}")
         print("=====================================")
-    return T_top, E_total
+    return T_top*1e-9, E_total*1e-9
     
