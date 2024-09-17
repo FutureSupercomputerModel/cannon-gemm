@@ -42,7 +42,7 @@ class Arch(Arch_base):
 
         self.ns_setup_interconnect = ns_setup_interconnect
 
-        self.buffer_size = self.buffer_size_bytes/self.bytes_per_element # #elements
+        self.buffer_size_elems = self.buffer_size_bytes/self.bytes_per_element # #elements
         self.buffer_bw = self.buffer_bw_GBps/self.bytes_per_element #elements per ns
         self.mesh_bw = self.mesh_bw_GBps/self.bytes_per_element #elements per ns
         self.p = mesh_dim*mesh_dim
@@ -53,8 +53,8 @@ class Arch(Arch_base):
         
     def get_max_gemm_size(self):
         min_problem_dim = self.mesh_dim * self.child_arch.min_gemm_size
-        min_problem_size = min_problem_dim**2*3*self.bytes_per_element
-        scale_up_factor = math.floor(math.sqrt(self.buffer_size / min_problem_size))
+        min_problem_size = min_problem_dim**2*3
+        scale_up_factor = math.floor(math.sqrt(self.buffer_size_elems / min_problem_size))
         return (min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor)
 
     def spatial_tile_gemm(self, m_in,k_in,n_in,debug:bool):
@@ -74,13 +74,13 @@ class Arch(Arch_base):
             print(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
         return (m, k, n, m_leaf, k_leaf, n_leaf)
     
-    def cannon_gemm(self, m_in,k_in,n_in,debug:bool):
+    def cannon_gemm(self, m_in,k_in,n_in,debug:bool, general_tiling):
         m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in,debug)
 
         T_prep_A = self.ns_setup_interconnect + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
         T_prep_B = self.ns_setup_interconnect + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
         T_prep = max(T_prep_A+T_prep_B, (m*k+k*n)/self.buffer_bw )#time to load A and B, potentially bound by dram bandwidth
-        T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug))
+        T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug, general_tiling))
         
         T_send_A = self.mesh_dim*(self.ns_setup_interconnect+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
         T_send_B = self.mesh_dim*(self.ns_setup_interconnect+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
@@ -112,7 +112,7 @@ class Arch(Arch_base):
 
     def temp_tile_gemm(self, m,k,n, debug):
         #temporal tiling
-        assert (m*k+n*k+m*n)*self.bytes_per_element <= self.buffer_size, f"problem size exceeds buffer size: {(m*k+n*k+m*n)*self.bytes_per_element} > {self.buffer_size}"
+        assert (m*k+n*k+m*n)*self.bytes_per_element <= self.buffer_size_bytes, f"problem size exceeds buffer size: {bytes2str((m*k+n*k+m*n)*self.bytes_per_element)} > {bytes2str(self.buffer_size_bytes)}"
         (m_tile, k_tile, n_tile) = tuple(self.mesh_dim * np.array(self.child_arch.get_max_gemm_size()))
         # (m_tile, k_tile, n_tile) = (m,k,n)
         iteration = math.ceil(m/m_tile)*math.ceil(k/k_tile)*math.ceil(n/n_tile)
@@ -144,7 +144,7 @@ class Arch(Arch_base):
                 k_tile = math.ceil(k/pqr)
                 n_tile = math.ceil(n/pqr)
                 m_pad,k_pad,n_pad,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_tile,k_tile,n_tile,debug=False)
-                if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf)*self.bytes_per_element <= self.child_arch.buffer_size and pqr*pqr*pqr<p_opt*q_opt*r_opt:
+                if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf) <= self.child_arch.buffer_size_elems and pqr*pqr*pqr<p_opt*q_opt*r_opt:
                     #valid pqr
                     p_opt=pqr
                     q_opt=pqr
@@ -168,7 +168,7 @@ class Arch(Arch_base):
                         k_tile = math.ceil(k/q)
                         n_tile = math.ceil(n/r)
                         m_pad,k_pad,n_pad,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_tile,k_tile,n_tile,debug=False)
-                        if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf)*self.bytes_per_element <= self.child_arch.buffer_size and p*q*r<p_opt*q_opt*r_opt:
+                        if (m_leaf*k_leaf+k_leaf*n_leaf+m_leaf*n_leaf) <= self.child_arch.buffer_size_elems and p*q*r<p_opt*q_opt*r_opt:
                             #valid pqr
                             p_opt=p
                             q_opt=q
@@ -183,12 +183,15 @@ class Arch(Arch_base):
             print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
-    def get_gemm_latency_energy(self, m,k,n, debug:bool):
+    def get_gemm_latency_energy(self, m,k,n, debug:bool, general_tiling=True):
         #report buffer usage
         if debug:
             print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size_bytes}")
-        (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n, debug)
-        T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug)
+        if general_tiling:
+            (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n, debug)
+        else:
+            (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n, debug)
+        T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug, general_tiling)
         return T_tile*iteration, E_tile*iteration
 
     
@@ -205,13 +208,13 @@ class Arch(Arch_base):
 
 
 
-def top_level_gemm(m,k,n, arch: Arch, debug:bool):
+def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
     if debug:
         print("================Arch=====================")
         arch.print()
         print("----------------Problem---------------------")
         print(f"top level problem: {m},{k},{n}")
-    T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug)
+    T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug, general_tiling)
     if debug:
         print(f"ns for top level problem: {T_top}")
         print(f"nJ for top level problem: {E_total}")

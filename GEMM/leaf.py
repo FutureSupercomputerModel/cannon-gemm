@@ -20,7 +20,7 @@ class Leaf(Arch_base):
     def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int) -> None:
         self.pe_arr_dim = pe_arr_dim
         self.buffer_size_bytes = str2bytes(buffer_size)
-        self.buffer_size = self.buffer_size_bytes/bytes_per_element
+        self.buffer_size_elems = self.buffer_size_bytes/bytes_per_element
         self.buffer_bw_GBps = str2GBps(buffer_bw)
         self.buffer_bw = self.buffer_bw_GBps/bytes_per_element #elements per ns
         self.pe_freq = pe_freq
@@ -47,7 +47,7 @@ class Leaf(Arch_base):
         energy = (M*K*N*self.nJ_per_mac + (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit))*1e-3
         return energy, time
     
-    def get_gemm_latency_energy(self, M:int, K:int, N:int, debug:bool):
+    def get_gemm_latency_energy(self, M:int, K:int, N:int, debug:bool, general_tiling:bool):
         M = math.ceil(M/(self.min_gemm_size)) * self.min_gemm_size
         K = math.ceil(K/(self.min_gemm_size)) * self.min_gemm_size
         N = math.ceil(N/(self.min_gemm_size)) * self.min_gemm_size
@@ -59,11 +59,11 @@ class Leaf(Arch_base):
             print(f"Leaf energy (nJ): {energy}, Leaf time (ns): {time}")
             #report buffer usage
             print(f"buffer usage: {(M*K+K*N+M*N)*self.bytes_per_element}/{self.buffer_size_bytes}")
-        assert M*K+K*N+M*N<=self.buffer_size
+        assert M*K+K*N+M*N<=self.buffer_size_elems
         # return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw), M*K*N*self.nJ_per_mac
         return time, energy
     
     def get_max_gemm_size(self):
-        min_problem_size_per_leaf = self.min_gemm_size*self.min_gemm_size*3*self.bytes_per_element
-        scale_up_factor = math.floor(math.sqrt(self.buffer_size / min_problem_size_per_leaf))
+        min_problem_size_per_leaf = self.min_gemm_size*self.min_gemm_size*3
+        scale_up_factor = math.floor(math.sqrt(self.buffer_size_elems / min_problem_size_per_leaf))
         return (self.min_gemm_size*scale_up_factor, self.min_gemm_size*scale_up_factor, self.min_gemm_size*scale_up_factor)
