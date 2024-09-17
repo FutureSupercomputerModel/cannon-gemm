@@ -1,6 +1,7 @@
 from GEMM.arch_base import Arch_base
 from Leaf_Modeling.src.leaf_interface import run_leaf_modeling
 import math
+from helper.myMath import bytes2str, str2bytes, str2GBps
 class Leaf(Arch_base):
     # pe_arr_dim = 200.0
     # buffer_size = 20.0*1024*1024 #20MB
@@ -16,12 +17,12 @@ class Leaf(Arch_base):
     # min_gemm_size = pe_arr_dim
     # buffer_bw = buffer_width*buffer_freq/8.0 #bytes per ns
 
-    def __init__(self, pe_arr_dim:float, buffer_size_bytes:float, buffer_bw_GBps:float, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int) -> None:
+    def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int) -> None:
         self.pe_arr_dim = pe_arr_dim
-        self.buffer_size_bytes = buffer_size_bytes
-        self.buffer_size = buffer_size_bytes/bytes_per_element
-        self.buffer_bw_GBps = buffer_bw_GBps
-        self.buffer_bw = buffer_bw_GBps/bytes_per_element #elements per ns
+        self.buffer_size_bytes = str2bytes(buffer_size)
+        self.buffer_size = self.buffer_size_bytes/bytes_per_element
+        self.buffer_bw_GBps = str2GBps(buffer_bw)
+        self.buffer_bw = self.buffer_bw_GBps/bytes_per_element #elements per ns
         self.pe_freq = pe_freq
         self.nJ_per_mac = nJ_per_mac
         self.interconnect_nJ_per_bit = interconnect_nJ_per_bit
@@ -33,7 +34,7 @@ class Leaf(Arch_base):
         self.child_arch = None
 
     def print(self):
-        print(f"pe_arr_dim: {self.pe_arr_dim}, buffer_size: {self.buffer_size_bytes}B, buffer_bw: {self.buffer_bw_GBps}GBps,"
+        print(f"pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {self.buffer_bw_GBps}GBps,"
                 f"pe_freq: {self.pe_freq}GHz,  nJ_per_mac: {self.nJ_per_mac}nJ, "
                 f"interconnect_nJ_per_bit: {self.interconnect_nJ_per_bit}nJ, buffer_nJ_per_bit: {self.buffer_nJ_per_bit}nJ, min_gemm_size: {self.min_gemm_size}, precision: {self.bytes_per_element*8},"
                 f"max_gemm_size: {self.get_max_gemm_size()}")

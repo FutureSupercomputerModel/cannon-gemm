@@ -2,6 +2,7 @@ import math
 import numpy as np
 from GEMM.arch_base import Arch_base
 from GEMM.leaf import Leaf
+from helper.myMath import bytes2str, str2bytes, str2GBps
 class Arch(Arch_base):
     # #Buffer
     # buffer_size = 8.0*1024*1024*1024 #8GB
@@ -22,7 +23,7 @@ class Arch(Arch_base):
 
 
 
-    def __init__(self, mesh_dim:float, mesh_bw_GBps:float, buffer_size_bytes:float, buffer_bw_GBps:float, 
+    def __init__(self, mesh_dim:float, mesh_bw:str, buffer_size:str, buffer_bw:str, 
                  mesh_nJ_per_bit:float, buffer_nJ_per_bit:float, 
                  child_arch:Arch_base,
                  ns_setup_interconnect:float=0,
@@ -30,9 +31,9 @@ class Arch(Arch_base):
                  ) -> None:
         #arch params
         self.mesh_dim = mesh_dim
-        self.mesh_bw_GBps = mesh_bw_GBps
-        self.buffer_size_bytes = buffer_size_bytes
-        self.buffer_bw_GBps = buffer_bw_GBps
+        self.mesh_bw_GBps = str2GBps(mesh_bw)
+        self.buffer_size_bytes = str2bytes(buffer_size)
+        self.buffer_bw_GBps = str2GBps(buffer_bw)
         
 
         #tech params
@@ -193,7 +194,7 @@ class Arch(Arch_base):
     
     
     def print(self):
-        print(f"mesh_dim={self.mesh_dim}, buffer_size={self.buffer_size_bytes}B, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
+        print(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 
