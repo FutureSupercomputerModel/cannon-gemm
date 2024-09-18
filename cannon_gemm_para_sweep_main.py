@@ -3,35 +3,35 @@ from GEMM.arch import Arch
 from GEMM.leaf import Leaf
 from GEMM.arch import top_level_gemm
 
-# list_leaf_pe_arr_dim = [64, 128, 200, 256]
-# list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
-# list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
-# list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
+list_leaf_pe_arr_dim = [64, 128, 200, 256]
+list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
+list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
+list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
 
-# list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
-# list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
-# list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
-# list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
+list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
+list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
+list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
+list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
 
-# list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
-# list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
-# list_node_buffer_size = ['8TB']
-# list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
-
-list_leaf_pe_arr_dim = [128, 200]
-list_leaf_buffer_size = ["10MB", "20MB"]
-list_leaf_buffer_width = [16, 32]#x is frequency
-list_leaf_pe_freq = [10.0, 30.0]
-
-list_blade_mesh_dim = [4.0, 9.0]
-list_blade_mesh_bw = ['120GBps', '240GBps']
-list_blade_buffer_size = ['4.0TB', '8.0TB']
-list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
-
-list_node_mesh_dim = [5.0, 10.0]
-list_node_mesh_bw = ['0.5PBps', '1PBps']
+list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
+list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
 list_node_buffer_size = ['8TB']
-list_node_buffer_bw = ['1.5PBps', '3.0PBps']
+list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
+
+# list_leaf_pe_arr_dim = [128, 200]
+# list_leaf_buffer_size = ["10MB", "20MB"]
+# list_leaf_buffer_width = [16, 32]#x is frequency
+# list_leaf_pe_freq = [10.0, 30.0]
+
+# list_blade_mesh_dim = [4.0, 9.0]
+# list_blade_mesh_bw = ['120GBps', '240GBps']
+# list_blade_buffer_size = ['4.0TB', '8.0TB']
+# list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
+
+# list_node_mesh_dim = [5.0, 10.0]
+# list_node_mesh_bw = ['0.5PBps', '1PBps']
+# list_node_buffer_size = ['8TB']
+# list_node_buffer_bw = ['1.5PBps', '3.0PBps']
 
 class Sys_arch:
     def __init__(self, leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -89,28 +89,30 @@ def exp(sys_arch:Sys_arch):
     T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=False)
     return sys_arch, T_top, E_total
 
-max_processes = int(multiprocessing.cpu_count()/2)
+max_processes = int(multiprocessing.cpu_count())
 print("Maximum number of processes:", max_processes)
 pool = Pool(max_processes)
 # res = tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
 res = list(tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)))
 print(f"finished all experiments")
-for sys_arch, T_top, E_total in res:
-    #for plot
-    list_T = np.append(list_T, T_top)
-    list_E = np.append(list_E, E_total)
-    #for dump
-    data.append([sys_arch.leaf_pe_arr_dim,sys_arch.leaf_buffer_size,sys_arch.leaf_buffer_width,sys_arch.leaf_pe_freq,\
-              sys_arch.blade_mesh_dim,sys_arch.blade_mesh_bw,sys_arch.blade_buffer_size,sys_arch.blade_buffer_bw,\
-                sys_arch.node_mesh_dim,sys_arch.node_mesh_bw,sys_arch.node_buffer_size,sys_arch.node_buffer_bw, T_top, E_total])
-# with open("cannon_gemm_para_sweep_dumped_data", "w") as fp:
-#     json.dump(data, fp)
+
 with open("cannon_gemm_para_sweep_dumped_data.csv", "w") as fp:
     writer = csv.writer(fp)
     writer.writerow(["leaf_pe_arr_dim","leaf_buffer_size","leaf_buffer_width","leaf_pe_freq",\
               "blade_mesh_dim","blade_mesh_bw","blade_buffer_size","blade_buffer_bw",\
-                "node_mesh_dim","node_mesh_bw","node_buffer_size","node_buffer_bw", "T_top", "E_total"])
-    writer.writerows(data)
+                "node_mesh_dim","node_mesh_bw","node_buffer_size","node_buffer_bw", "T_top(s)", "E_total(J)"])
+    for sys_arch, T_top, E_total in res:
+        #for plot
+        # list_T = np.append(list_T, T_top)
+        # list_E = np.append(list_E, E_total)
+        #for dump
+        data=[sys_arch.leaf_pe_arr_dim,sys_arch.leaf_buffer_size,sys_arch.leaf_buffer_width,sys_arch.leaf_pe_freq,\
+                sys_arch.blade_mesh_dim,sys_arch.blade_mesh_bw,sys_arch.blade_buffer_size,sys_arch.blade_buffer_bw,\
+                    sys_arch.node_mesh_dim,sys_arch.node_mesh_bw,sys_arch.node_buffer_size,sys_arch.node_buffer_bw, T_top, E_total]
+        writer.writerow(data)
+# with open("cannon_gemm_para_sweep_dumped_data", "w") as fp:
+#     json.dump(data, fp)
+
 
 
 # matplotlib.use('agg')
