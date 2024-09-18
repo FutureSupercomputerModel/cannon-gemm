@@ -49,8 +49,10 @@ class Arch(Arch_base):
 
         self.roofline = roofline
         self.child_arch = child_arch
+        self.level = child_arch.level + 1
         self.min_gemm_size = self.mesh_dim * child_arch.min_gemm_size
-        
+    
+    
     def get_max_gemm_size(self):
         min_problem_dim = self.mesh_dim * self.child_arch.min_gemm_size
         min_problem_size = min_problem_dim**2*3
@@ -65,13 +67,13 @@ class Arch(Arch_base):
         # pad k to be multiple of mesh_dim * pe_arr_dim
         k = math.ceil(k_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
         if debug:
-            print(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
+            self.debugprint(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
         #tile m, n to leaf problems
         m_leaf = m/self.mesh_dim
         k_leaf = k/self.mesh_dim
         n_leaf = n/self.mesh_dim
         if debug:
-            print(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
+            self.debugprint(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
         return (m, k, n, m_leaf, k_leaf, n_leaf)
     
     def cannon_gemm(self, m_in,k_in,n_in,debug:bool, general_tiling):
@@ -90,6 +92,8 @@ class Arch(Arch_base):
         elif(T_send_A < T_send_B):
             self.T_send_bottleneck = "B"
         T_store = self.ns_setup_interconnect+max(m*n/self.buffer_bw, m*n/self.p/self.child_arch.buffer_bw)
+        if debug:
+            self.debugprint(f"latency breakdown: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
         if self.roofline:
             latency = max(T_prep, T_compute, T_send, T_store)
         else:
@@ -121,7 +125,7 @@ class Arch(Arch_base):
             k_tile=k
             n_tile=n
         if debug:
-            print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+            self.debugprint(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
     def temp_tile_gemm_general(self, m,k,n, debug):
@@ -180,24 +184,26 @@ class Arch(Arch_base):
         n_tile = math.ceil(n/r_opt)
         iteration = p_opt*q_opt*r_opt
         if debug:
-            print(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
+            self.debugprint(f"temporal tiling: from {m}, {k}, {n}, to tiled problem: {m_tile}, {k_tile}, {n_tile}, on {iteration} iterations")
         return (m_tile, k_tile, n_tile, iteration)
     
     def get_gemm_latency_energy(self, m,k,n, debug:bool, general_tiling=True):
         #report buffer usage
         if debug:
-            print(f"buffer usage: {(m*k+k*n+m*n)*self.bytes_per_element}/{self.buffer_size_bytes}")
+            self.debugprint(f"buffer usage: {bytes2str((m*k+k*n+m*n)*self.bytes_per_element)}/{bytes2str(self.buffer_size_bytes)}")
         if general_tiling:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n, debug)
         else:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n, debug)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug, general_tiling)
+        if debug:
+            self.debugprint(f"latency per iteration: {T_tile}, energy per iteration: {E_tile}")
         return T_tile*iteration, E_tile*iteration
 
     
     
     def print(self):
-        print(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
+        self.debugprint(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 

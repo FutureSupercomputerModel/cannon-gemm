@@ -32,17 +32,20 @@ class Leaf(Arch_base):
 
         self.min_gemm_size = self.pe_arr_dim
         self.child_arch = None
+        self.level = 0
 
     def print(self):
-        print(f"pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {self.buffer_bw_GBps}GBps,"
+        self.debugprint(f"pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {self.buffer_bw_GBps}GBps,"
                 f"pe_freq: {self.pe_freq}GHz,  nJ_per_mac: {self.nJ_per_mac}nJ, "
                 f"interconnect_nJ_per_bit: {self.interconnect_nJ_per_bit}nJ, buffer_nJ_per_bit: {self.buffer_nJ_per_bit}nJ, min_gemm_size: {self.min_gemm_size}, precision: {self.bytes_per_element*8},"
                 f"max_gemm_size: {self.get_max_gemm_size()}")
     
     #energy in nJ, time in ns
-    def run_leaf_modeling_fallback(self, M, K, N):
+    def run_leaf_modeling_fallback(self, M, K, N, debug=False):
         compute_time = M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq
         buffer_time = (M*K+K*N+M*N)/self.buffer_bw
+        if debug:
+            self.debugprint(f"leaf compute_time: {compute_time}, buffer_time: {buffer_time}")
         time = max(compute_time, buffer_time)
         energy = (M*K*N*self.nJ_per_mac + (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit))*1e-3
         return energy, time
@@ -54,11 +57,11 @@ class Leaf(Arch_base):
 
         # leaf_tech = 'cmos-gemm-7nm'
         # energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
-        energy, time = self.run_leaf_modeling_fallback(M, K, N)
+        energy, time = self.run_leaf_modeling_fallback(M, K, N, debug)
         if debug:
-            print(f"Leaf energy (nJ): {energy}, Leaf time (ns): {time}")
+            self.debugprint(f"Leaf energy (nJ): {energy}, Leaf time (ns): {time}")
             #report buffer usage
-            print(f"buffer usage: {(M*K+K*N+M*N)*self.bytes_per_element}/{self.buffer_size_bytes}")
+            self.debugprint(f"buffer usage: {bytes2str((M*K+K*N+M*N)*self.bytes_per_element)}/{bytes2str(self.buffer_size_bytes)}")
         assert M*K+K*N+M*N<=self.buffer_size_elems
         # return max(M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq, M*K+K*N+M*N/self.buffer_bw), M*K*N*self.nJ_per_mac
         return time, energy
