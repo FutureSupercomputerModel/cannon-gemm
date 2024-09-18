@@ -3,35 +3,35 @@ from GEMM.arch import Arch
 from GEMM.leaf import Leaf
 from GEMM.arch import top_level_gemm
 
-list_leaf_pe_arr_dim = [64, 128, 200, 256]
-list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
-list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
-list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
+# list_leaf_pe_arr_dim = [64, 128, 200, 256]
+# list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
+# list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
+# list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
 
-list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
-list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
-list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
-list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
+# list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
+# list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
+# list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
+# list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
 
-list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
-list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
-list_node_buffer_size = ['8TB']
-list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
-
-# list_leaf_pe_arr_dim = [128, 200]
-# list_leaf_buffer_size = ["10MB", "20MB"]
-# list_leaf_buffer_width = [16, 32]#x is frequency
-# list_leaf_pe_freq = [10.0, 30.0]
-
-# list_blade_mesh_dim = [4.0, 9.0]
-# list_blade_mesh_bw = ['120GBps', '240GBps']
-# list_blade_buffer_size = ['4.0TB', '8.0TB']
-# list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
-
-# list_node_mesh_dim = [5.0, 10.0]
-# list_node_mesh_bw = ['0.5PBps', '1PBps']
+# list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
+# list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
 # list_node_buffer_size = ['8TB']
-# list_node_buffer_bw = ['1.5PBps', '3.0PBps']
+# list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
+
+list_leaf_pe_arr_dim = [128, 200]
+list_leaf_buffer_size = ["10MB", "20MB"]
+list_leaf_buffer_width = [16, 32]#x is frequency
+list_leaf_pe_freq = [10.0, 30.0]
+
+list_blade_mesh_dim = [4.0, 9.0]
+list_blade_mesh_bw = ['120GBps', '240GBps']
+list_blade_buffer_size = ['4.0TB', '8.0TB']
+list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
+
+list_node_mesh_dim = [5.0, 10.0]
+list_node_mesh_bw = ['0.5PBps', '1PBps']
+list_node_buffer_size = ['8TB']
+list_node_buffer_bw = ['1.5PBps', '3.0PBps']
 
 class Sys_arch:
     def __init__(self, leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -49,7 +49,6 @@ class Sys_arch:
         self.node_mesh_bw = node_mesh_bw
         self.node_buffer_size = node_buffer_size
         self.node_buffer_bw = node_buffer_bw
-        
     def cannon_gemm(self, m, k, n, debug=False):
         hier_arch_leaf = Leaf(pe_arr_dim=self.leaf_pe_arr_dim, 
                       buffer_size=self.leaf_buffer_size, 
@@ -77,52 +76,59 @@ import numpy as np
 m,k,n = 90*200*64,90*200*64,90*200*64
 list_T = np.array([])
 list_E = np.array([])
+data = []
 print(f"number of experiments: {len(sys_arch_list)}")
 finished_exps = 0
 import multiprocessing
 from multiprocessing import Pool
 from tqdm import tqdm
-
+import json
+import csv
 
 def exp(sys_arch:Sys_arch):
     T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=False)
-    return T_top, E_total
+    return sys_arch, T_top, E_total
 
-max_processes = multiprocessing.cpu_count()
+max_processes = int(multiprocessing.cpu_count()/2)
 print("Maximum number of processes:", max_processes)
 pool = Pool(max_processes)
 # res = tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
 res = list(tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)))
 print(f"finished all experiments")
-for T_top, E_total in res:
+for sys_arch, T_top, E_total in res:
+    #for plot
     list_T = np.append(list_T, T_top)
     list_E = np.append(list_E, E_total)
-# print(res)
-# for sys_arch in sys_arch_list:
-#     T_top, E_total = sys_arch.cannon_gemm(90*200*64,90*200*64,90*200*64, debug=False)
-#     list_T = np.append(list_T, T_top)
-#     list_E = np.append(list_E, E_total)
-#     finished_exps +=1
-#     if finished_exps%1000 == 0:
-#         print(f"{finished_exps}/{len(sys_arch_list)}")
+    #for dump
+    data.append([sys_arch.leaf_pe_arr_dim,sys_arch.leaf_buffer_size,sys_arch.leaf_buffer_width,sys_arch.leaf_pe_freq,\
+              sys_arch.blade_mesh_dim,sys_arch.blade_mesh_bw,sys_arch.blade_buffer_size,sys_arch.blade_buffer_bw,\
+                sys_arch.node_mesh_dim,sys_arch.node_mesh_bw,sys_arch.node_buffer_size,sys_arch.node_buffer_bw, T_top, E_total])
+# with open("cannon_gemm_para_sweep_dumped_data", "w") as fp:
+#     json.dump(data, fp)
+with open("cannon_gemm_para_sweep_dumped_data.csv", "w") as fp:
+    writer = csv.writer(fp)
+    writer.writerow(["leaf_pe_arr_dim","leaf_buffer_size","leaf_buffer_width","leaf_pe_freq",\
+              "blade_mesh_dim","blade_mesh_bw","blade_buffer_size","blade_buffer_bw",\
+                "node_mesh_dim","node_mesh_bw","node_buffer_size","node_buffer_bw", "T_top", "E_total"])
+    writer.writerows(data)
 
 
-matplotlib.use('agg')
-fig1 = plt.figure("Latency vs Energy")
-plt.scatter(list_T, list_E)
-plt.xlabel('Latency (s)')
-plt.ylabel('Energy (J)')
-plt.savefig('cannon_gemm_para_sweep_latency_energy.pdf')
+# matplotlib.use('agg')
+# fig1 = plt.figure("Latency vs Energy")
+# plt.scatter(list_T, list_E)
+# plt.xlabel('Latency (s)')
+# plt.ylabel('Energy (J)')
+# plt.savefig('cannon_gemm_para_sweep_latency_energy.pdf')
 
-list_throughput = m*k*n/list_T*1e-9
-list_power = list_E/list_T
-fig2 = plt.figure("Throughput vs Power")
-plt.scatter(list_throughput, list_power)
-plt.xlabel('Throughput (TOPS/s)')
-plt.ylabel('Power (W)')
-plt.savefig('cannon_gemm_para_sweep_throughput_power.pdf')
+# list_throughput = m*k*n/list_T*1e-9
+# list_power = list_E/list_T
+# fig2 = plt.figure("Throughput vs Power")
+# plt.scatter(list_throughput, list_power)
+# plt.xlabel('Throughput (TOPS/s)')
+# plt.ylabel('Power (W)')
+# plt.savefig('cannon_gemm_para_sweep_throughput_power.pdf')
 
-print(f"list_T: {list_T}")
-print(f"list_E: {list_E}")
-print(f"list_throughput: {list_throughput}")
-print(f"list_power: {list_power}")
+# print(f"list_T: {list_T}")
+# print(f"list_E: {list_E}")
+# print(f"list_throughput: {list_throughput}")
+# print(f"list_power: {list_power}")
