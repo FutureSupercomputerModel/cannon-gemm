@@ -84,8 +84,8 @@ class Arch(Arch_base):
         T_prep = max(T_prep_A+T_prep_B, (m*k+k*n)/self.buffer_bw )#time to load A and B, potentially bound by dram bandwidth
         T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug, general_tiling))
         
-        T_send_A = self.mesh_dim*(self.ns_setup_interconnect+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
-        T_send_B = self.mesh_dim*(self.ns_setup_interconnect+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
+        T_send_A = (self.mesh_dim-1)*(self.ns_setup_interconnect+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
+        T_send_B = (self.mesh_dim-1)*(self.ns_setup_interconnect+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
         T_send = T_send_A + T_send_B
         if(T_send_A > T_send_B):
             self.T_send_bottleneck = "A"
@@ -222,8 +222,8 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
         print(f"top level problem: {m},{k},{n}")
     T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug, general_tiling)
     if debug:
-        print(f"ns for top level problem: {T_top}")
-        print(f"nJ for top level problem: {E_total}")
+        print(f"s for top level problem: {T_top*1e-9}")
+        print(f"J for top level problem: {E_total*1e-9}")
         print("=====================================")
     return T_top*1e-9, E_total*1e-9
     
