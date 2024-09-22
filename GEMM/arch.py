@@ -130,6 +130,7 @@ class Arch(Arch_base):
     
     def temp_tile_gemm_general(self, m,k,n, debug):
         #general temporal tiling, works for unsquare matrices
+        assert (m*k+n*k+m*n)*self.bytes_per_element <= self.buffer_size_bytes, f"problem size exceeds buffer size: {bytes2str((m*k+n*k+m*n)*self.bytes_per_element)} > {bytes2str(self.buffer_size_bytes)}"
         #initialize tiling factors
         p=m
         q=k

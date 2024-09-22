@@ -4,19 +4,19 @@ from GEMM.leaf import Leaf
 from GEMM.arch import top_level_gemm
 
 list_leaf_pe_arr_dim = [64, 128, 200, 256]
-list_leaf_buffer_size = ['1MB', "5MB", "10MB", "20MB", "40MB"]
-list_leaf_buffer_width = [16, 32, 64, 128]#x is frequency
-list_leaf_pe_freq = [4.0, 10.0, 30.0, 60.0]
+list_leaf_buffer_size = ["5MB", "10MB", "20MB", "40MB"]
+list_leaf_buffer_width = [11000*0.6, 22000*0.6, 44000*0.6, 88000*0.6]#x is frequency
+list_leaf_pe_freq = [4.0, 15.0, 30.0, 60.0]
 
-list_blade_mesh_dim = [4.0, 9.0, 16.0, 32.0]
-list_blade_mesh_bw = ['120GBps', '240GBps', '480GBps', '960GBps']
-list_blade_buffer_size = ['2.0TB', '4.0TB', '8.0TB', '16.0TB']
-list_blade_buffer_bw = ['15.0TBps', '30.0TBps', '60.0TBps', '120.0TBps']
+list_blade_mesh_dim = [2.0, 4.0, 9.0, 18.0]
+list_blade_mesh_bw = ['18.34TBps', '36.67TBps', '73.34TBps', '146.68TBps']
+list_blade_buffer_size = ['20.0GB', '40.0GB', '80.0GB', '160.0GB']
+list_blade_buffer_bw = ['7.5TBps','15.0TBps', '30.0TBps', '60.0TBps']
 
-list_node_mesh_dim = [5.0, 10.0, 20.0, 40.0]
+list_node_mesh_dim = [2.0, 5.0, 10.0, 20.0]
 list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
 list_node_buffer_size = ['8TB']
-list_node_buffer_bw = ['1.5PBps', '3.0PBps', '6.0PBps', '12.0PBps']
+list_node_buffer_bw = ['0.75PBps','1.5PBps', '3.0PBps', '6.0PBps']
 
 # list_leaf_pe_arr_dim = [128, 200]
 # list_leaf_buffer_size = ["10MB", "20MB"]
