@@ -3,35 +3,37 @@ from GEMM.arch import Arch
 from GEMM.leaf import Leaf
 from GEMM.arch import top_level_gemm
 
-list_leaf_pe_arr_dim = [64, 128, 200, 256]
-list_leaf_buffer_size = ["5MB", "10MB", "20MB", "40MB"]
-list_leaf_buffer_width = [11000*0.6, 22000*0.6, 44000*0.6, 88000*0.6]#x is frequency
-list_leaf_pe_freq = [4.0, 15.0, 30.0, 60.0]
+# list_leaf_pe_arr_dim = [50, 100, 200, 400]
+# list_leaf_buffer_size = ["5MB", "10MB", "20MB", "40MB"]
+# list_leaf_buffer_width = [22000*0.6, 44000*0.6]#x is frequency
+# list_leaf_pe_freq = [30.0]
 
-list_blade_mesh_dim = [2.0, 4.0, 9.0, 18.0]
-list_blade_mesh_bw = ['18.34TBps', '36.67TBps', '73.34TBps', '146.68TBps']
-list_blade_buffer_size = ['20.0GB', '40.0GB', '80.0GB', '160.0GB']
-list_blade_buffer_bw = ['7.5TBps','15.0TBps', '30.0TBps', '60.0TBps']
-
-list_node_mesh_dim = [2.0, 5.0, 10.0, 20.0]
-list_node_mesh_bw = ['0.5PBps', '1PBps', '2PBps', '4PBps']
-list_node_buffer_size = ['8TB']
-list_node_buffer_bw = ['0.75PBps','1.5PBps', '3.0PBps', '6.0PBps']
-
-# list_leaf_pe_arr_dim = [128, 200]
-# list_leaf_buffer_size = ["10MB", "20MB"]
-# list_leaf_buffer_width = [16, 32]#x is frequency
-# list_leaf_pe_freq = [10.0, 30.0]
-
-# list_blade_mesh_dim = [4.0, 9.0]
-# list_blade_mesh_bw = ['120GBps', '240GBps']
-# list_blade_buffer_size = ['4.0TB', '8.0TB']
+# list_blade_mesh_dim = [2.0, 4.0, 9.0, 18.0]
+# list_blade_mesh_bw = ['36.67TBps', '73.34TBps']
+# list_blade_buffer_size = ['20.0GB', '40.0GB', '80.0GB', '160.0GB']
 # list_blade_buffer_bw = ['15.0TBps', '30.0TBps']
 
-# list_node_mesh_dim = [5.0, 10.0]
+# list_node_mesh_dim = [2.0, 5.0, 10.0, 20.0]
 # list_node_mesh_bw = ['0.5PBps', '1PBps']
 # list_node_buffer_size = ['8TB']
 # list_node_buffer_bw = ['1.5PBps', '3.0PBps']
+
+list_leaf_pe_arr_dim = [200]
+list_leaf_buffer_size = ["40MB"]
+list_leaf_buffer_width = [44000*0.6]#x is frequency
+list_leaf_pe_freq = [ 30.0]
+
+list_blade_mesh_dim = [18.0]
+list_blade_mesh_bw = ['73.34TBps']
+list_blade_buffer_size = ['80.0GB']
+list_blade_buffer_bw = ['30.0TBps'] #potential bottleneck
+
+list_node_mesh_dim = [20.0]
+list_node_mesh_bw = ['1PBps']
+list_node_buffer_size = ['8TB']
+list_node_buffer_bw = ['3.0PBps']
+
+
 
 class Sys_arch:
     def __init__(self, leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -60,7 +62,7 @@ class Sys_arch:
                       bytes_per_element=2)
         hier_arch_blade = Arch(mesh_dim=self.blade_mesh_dim, mesh_bw=self.blade_mesh_bw, buffer_size=self.blade_buffer_size, buffer_bw=self.blade_buffer_bw, mesh_nJ_per_bit=5e-7, buffer_nJ_per_bit=0.397e-3, child_arch=hier_arch_leaf)
         hier_arch_node = Arch(mesh_dim=self.node_mesh_dim, mesh_bw=self.node_mesh_bw, buffer_size=self.node_buffer_size, buffer_bw=self.node_buffer_bw, mesh_nJ_per_bit=5e-6, buffer_nJ_per_bit=0.397e-3, child_arch=hier_arch_blade)
-        T_top, E_total = top_level_gemm(m,k,n, hier_arch_node, debug=debug, general_tiling=False)
+        T_top, E_total = top_level_gemm(m,k,n, hier_arch_node, debug=debug, general_tiling=True)
         return T_top, E_total
 
 sys_arch_list = [Sys_arch(leaf_pe_arr_dim,leaf_buffer_size,leaf_buffer_width,leaf_pe_freq,\
@@ -86,7 +88,7 @@ import json
 import csv
 
 def exp(sys_arch:Sys_arch):
-    T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=False)
+    T_top, E_total = sys_arch.cannon_gemm(m,k,n, debug=True)
     return sys_arch, T_top, E_total
 
 max_processes = int(multiprocessing.cpu_count())
@@ -94,9 +96,9 @@ print("Maximum number of processes:", max_processes)
 pool = Pool(max_processes)
 # res = tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)) 
 res = list(tqdm(pool.imap_unordered(exp, sys_arch_list), total=len(sys_arch_list)))
-print(f"finished all experiments")
+print(f"finished all {len(res)} experiments")
 
-with open("cannon_gemm_para_sweep_dumped_data.csv", "w") as fp:
+with open("cannon_gemm_para_sweep_dumped_data_test.csv", "w") as fp:
     writer = csv.writer(fp)
     writer.writerow(["leaf_pe_arr_dim","leaf_buffer_size","leaf_buffer_width","leaf_pe_freq",\
               "blade_mesh_dim","blade_mesh_bw","blade_buffer_size","blade_buffer_bw",\

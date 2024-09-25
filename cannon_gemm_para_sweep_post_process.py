@@ -6,9 +6,22 @@ import random
 import pandas as pd
 import os
 from collections import Counter
+from adjustText import adjust_text
 
 def filter_unique(lst):
     return [item for item, count in Counter(lst).items() if count > 1]
+
+def has_identical_elements(lst):
+    """
+    Checks if all elements in the list are identical.
+
+    Args:
+        lst (list): The list to check.
+
+    Returns:
+        bool: True if all elements are identical, False otherwise.
+    """
+    return len(set(lst)) == 1
 
 def filter_top_percent(df, list_columns, percent):
     """
@@ -68,8 +81,14 @@ if not os.path.exists("cannon_gemm_para_sweep_dumped_data_filtered.csv"):
                     "node_mesh_dim","node_mesh_bw","node_buffer_size","node_buffer_bw", "T_top(s)", "E_total(J)"])
     df["T_top(s)"] = pd.to_numeric(df["T_top(s)"])
     df["E_total(J)"] = pd.to_numeric(df["E_total(J)"])
+    print(f"min: {df["T_top(s)"].min()}, max: {df["T_top(s)"].max()}")
+    print(f"min: {df["E_total(J)"].min()}, max: {df["E_total(J)"].max()}")
+    # df_40MB = df[df["leaf_buffer_size"] == "40MB" and df["leaf_pe_freq"] == "60.0"]
+    # df_40MB.to_csv("cannon_gemm_para_sweep_dumped_data_40MB.csv", index=False)
     print("filtering good designs...")
-    df = filter_bottom_percent(df, ["T_top(s)", "E_total(J)"], 0.05)
+    df = filter_bottom_percent(df, ["T_top(s)", "E_total(J)"], 0.3)
+    print(f"min: {df["T_top(s)"].min()}, max: {df["T_top(s)"].max()}")
+    print(f"min: {df["E_total(J)"].min()}, max: {df["E_total(J)"].max()}")
     #save the filtered data
     df.to_csv("cannon_gemm_para_sweep_dumped_data_filtered.csv", index=False)
     print("filtered data saved")
@@ -164,7 +183,64 @@ list_param_name = ["LEAF_PE_ARR_DIM",
             "NODE_BUFFER_SIZE",
             "NODE_BUFFER_BW"]
 
+def get_label(row):
+    return ", ".join([f"{list_param_name[i]}: {row[i]}" for i in range(12)])
+def get_label_rows(rows):
+    """
+    Get the label for a list of rows, using only columns with identical values.
+    """
+    is_identical = [has_identical_elements([row[i] for row in rows]) for i in range(12)]
+    return ", ".join([f"{rows[0][i] if is_identical[i] else 'X'}" for i in range(12)])
+
 ALPHA = 0.3
+def plot_efficiency_vs_throughput(data):
+    TE2config = {}
+    for row in data:
+        key = (float(row[-2]), float(row[-1]))
+        if key not in TE2config:
+            TE2config[key] = []
+        TE2config[key].append(row)
+    TE_pairs = [(float(row[-2]), float(row[-1])) for row in data]
+    TE_pairs = filter_unique(TE_pairs)
+    list_T = np.array([TE_pair[0] for TE_pair in TE_pairs])
+    list_E = np.array([TE_pair[1] for TE_pair in TE_pairs])
+    op_per_J = m*k*n/list_E
+    op_per_s = m*k*n/list_T
+    fig4 = plt.figure("Efficiency vs Throughput")
+    texts = []
+    plt.scatter(op_per_s, op_per_J, s=20, alpha=ALPHA)
+    for key, value in TE2config.items():
+        texts.append(plt.text(m*k*n/key[0], m*k*n/key[1], get_label_rows(value), fontsize=2))
+
+    adjust_text(texts, arrowprops=dict(arrowstyle="->", color='r', lw=0.5))
+    plt.xlabel('Throughput (OP/s)')
+    plt.ylabel('Energy Efficiency (OP/J)')
+    plt.savefig('fig_efficiency_vs_throughput.pdf')
+    matplotlib.pyplot.close()
+
+def plot_energy_vs_latency(data):
+    TE2config = {}
+    for row in data:
+        key = (float(row[-2]), float(row[-1]))
+        if key not in TE2config:
+            TE2config[key] = []
+        TE2config[key].append(row)
+    TE_pairs = [(float(row[-2]), float(row[-1])) for row in data]
+    TE_pairs = filter_unique(TE_pairs)
+    list_T = np.array([TE_pair[0] for TE_pair in TE_pairs])
+    list_E = np.array([TE_pair[1] for TE_pair in TE_pairs])
+    fig4 = plt.figure("Energy vs Latency")
+    texts = []
+    plt.scatter(list_T, list_E, s=20, alpha=ALPHA)
+    for key, value in TE2config.items():
+        texts.append(plt.text(key[0], key[1], get_label_rows(value), fontsize=2))
+
+    adjust_text(texts, arrowprops=dict(arrowstyle="->", color='r', lw=0.5))
+    plt.xlabel('Latency (s)')
+    plt.ylabel('Energy (J)')
+    plt.savefig('fig_energy_vs_latency.pdf')
+    matplotlib.pyplot.close()
+
 def bucket_plot_efficiency_vs_throughput(data, index):
     # Create buckets based on LEAF_PE_ARR_DIM values
     buckets = {}
@@ -227,6 +303,9 @@ def bucket_plot_energy_vs_latency(data, index):
     plt.savefig(f'fig_energy_vs_latency_{list_param_name[index]}.pdf')
     matplotlib.pyplot.close()
 
+plot_efficiency_vs_throughput(data)
+plot_energy_vs_latency(data)
 for index in range(12):
+    
     bucket_plot_efficiency_vs_throughput(data, index)
     bucket_plot_energy_vs_latency(data, index)
