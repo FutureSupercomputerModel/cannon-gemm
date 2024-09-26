@@ -27,6 +27,7 @@ gemm_sizes = [
 ]
 # m,k,n = (1800*2,1800*2,1800*2)
 # m,k,n = (37800.0, 37800.0, 37800.0)
+# m,k,n = (900, 900, 900)
 for m,k,n in gemm_sizes:
-    top_level_gemm(m,k,n, arch_lib.node_imec_1leaf, debug=True, general_tiling=True)
+    top_level_gemm(m,k,n, arch_lib.node_cmos_3x3leaf, debug=True, general_tiling=True)
 

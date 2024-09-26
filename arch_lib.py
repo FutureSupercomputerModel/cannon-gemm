@@ -10,7 +10,7 @@ leaf_cmos = Leaf(pe_arr_dim=200.0,
                       buffer_nJ_per_bit=0.5e-6, 
                       bytes_per_element=2)
 leaf_imec = Leaf(pe_arr_dim=200.0, 
-                      buffer_size='40.0MB', 
+                      buffer_size='20.0MB', 
                       buffer_bw = f'73.34TBps',
                       pe_freq=30.0, 
                       nJ_per_mac=14e-6, 
@@ -82,3 +82,33 @@ node_imec_1leaf = Arch(mesh_dim=1.0,
                  mesh_nJ_per_bit=5e-6, 
                  buffer_nJ_per_bit=0.397e-3, 
                  child_arch=blade_imec_1leaf)
+
+blade_imec_3x3leaf = Arch(mesh_dim=3.0,
+                    mesh_bw=f'73.34TBps', 
+                    buffer_size="80GB", 
+                    buffer_bw='30.0TBps', 
+                    mesh_nJ_per_bit=5e-7, 
+                    buffer_nJ_per_bit=0.397e-3, 
+                    child_arch=leaf_imec)
+node_imec_3x3leaf = Arch(mesh_dim=1.0,
+                        mesh_bw='1PBps', 
+                        buffer_size="8TB", 
+                        buffer_bw='3.0PBps', 
+                        mesh_nJ_per_bit=5e-6, 
+                        buffer_nJ_per_bit=0.397e-3, 
+                        child_arch=blade_imec_3x3leaf)
+
+blade_cmos_3x3leaf = Arch(mesh_dim=3.0,
+                    mesh_bw= f'{73.34*4/30}TBps', 
+                    buffer_size="80GB", 
+                    buffer_bw='30.0TBps', 
+                    mesh_nJ_per_bit=5e-7, 
+                    buffer_nJ_per_bit=0.397e-3, 
+                    child_arch=leaf_cmos)
+node_cmos_3x3leaf = Arch(mesh_dim=1.0, 
+                        mesh_bw='1PBps', 
+                        buffer_size="8TB", 
+                        buffer_bw='3.0PBps', 
+                        mesh_nJ_per_bit=5e-6, 
+                        buffer_nJ_per_bit=0.397e-3, 
+                        child_arch=blade_cmos_3x3leaf)

@@ -47,7 +47,12 @@ class Leaf(Arch_base):
         if debug:
             self.debugprint(f"leaf compute_time: {compute_time}, buffer_time: {buffer_time}")
         time = max(compute_time, buffer_time)
-        energy = (M*K*N*self.nJ_per_mac + (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit))*1e-3
+        # energy = (M*K*N*self.nJ_per_mac + (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit))
+        compute_energy = M*K*N*self.nJ_per_mac
+        buffer_energy = (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit)
+        if debug:
+            self.debugprint(f"leaf compute_energy: {compute_energy}, buffer_energy: {buffer_energy}")
+        energy = compute_energy + buffer_energy
         return energy, time
     
     def get_gemm_latency_energy(self, M:int, K:int, N:int, debug:bool, general_tiling:bool):
@@ -57,6 +62,7 @@ class Leaf(Arch_base):
 
         # leaf_tech = 'cmos-gemm-7nm'
         # energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
+        # time = cycles/self.pe_freq
         energy, time = self.run_leaf_modeling_fallback(M, K, N, debug)
         if debug:
             self.debugprint(f"Leaf energy (nJ): {energy}, Leaf time (ns): {time}")
