@@ -2,7 +2,7 @@ import math
 import numpy as np
 from GEMM.arch_base import Arch_base
 from GEMM.leaf import Leaf
-from helper.myMath import bytes2str, str2bytes, str2GBps
+from helper.myMath import *
 class Arch(Arch_base):
     # #Buffer
     # buffer_size = 8.0*1024*1024*1024 #8GB
@@ -82,7 +82,10 @@ class Arch(Arch_base):
         T_prep_A = self.ns_setup_interconnect + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
         T_prep_B = self.ns_setup_interconnect + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
         T_prep = max(T_prep_A+T_prep_B, (m*k+k*n)/self.buffer_bw )#time to load A and B, potentially bound by dram bandwidth
-        T_compute, E_compute = tuple(self.mesh_dim * x for x in self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug, general_tiling))
+        T_child, E_child = self.child_arch.get_gemm_latency_energy(m_leaf, k_leaf, n_leaf, debug, general_tiling)
+        T_compute = self.mesh_dim * T_child
+        E_compute = self.mesh_dim * self.p * E_child
+
         
         T_send_A = (self.mesh_dim-1)*(self.ns_setup_interconnect+max(m*k/self.p/self.buffer_bw, m*k/self.p/self.child_arch.buffer_bw))
         T_send_B = (self.mesh_dim-1)*(self.ns_setup_interconnect+max(k*n/self.p/self.buffer_bw, k*n/self.p/self.child_arch.buffer_bw))
@@ -92,23 +95,34 @@ class Arch(Arch_base):
         elif(T_send_A < T_send_B):
             self.T_send_bottleneck = "B"
         T_store = self.ns_setup_interconnect+max(m*n/self.buffer_bw, m*n/self.p/self.child_arch.buffer_bw)
-        if debug:
-            self.debugprint(f"latency breakdown: T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
+        
         if self.roofline:
             latency = max(T_prep, T_compute, T_send, T_store)
         else:
             latency = T_prep + T_compute + T_send + T_store
-
+        if debug:
+            self.debugprint(f"latency: {latency}, T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
         #energy
-        E_prep_buffer_read = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.buffer_nJ_per_bit*self.bytes_per_element*8.0
-        E_prep_child_buffer_write = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.child_arch.buffer_nJ_per_bit*self.bytes_per_element*8.0
-        E_prep_interconnect = self.mesh_dim * (1+self.mesh_dim) * self.mesh_nJ_per_bit * self.bytes_per_element * 8.0 * (m_leaf*k_leaf + k_leaf*n_leaf)/2.0
+        bits_prep_buffer_read = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.bytes_per_element*8.0
+        E_prep_buffer_read = bits_prep_buffer_read * self.buffer_nJ_per_bit
+        E_prep_child_buffer_write = bits_prep_buffer_read * self.child_arch.buffer_nJ_per_bit
+        bits_perp_interconnect = self.mesh_dim * (1+self.mesh_dim) * self.bytes_per_element * 8.0 * (m_leaf*k_leaf + k_leaf*n_leaf)/2.0
+        E_prep_interconnect = bits_perp_interconnect * self.mesh_nJ_per_bit 
         E_prep = E_prep_buffer_read + E_prep_child_buffer_write + E_prep_interconnect
-        E_send_child_buffer = self.p * self.child_arch.buffer_nJ_per_bit * 2 * (m_leaf*k_leaf + k_leaf*n_leaf) * self.bytes_per_element * 8.0
-        E_send_interconnect = self.p * self.mesh_nJ_per_bit * (m_leaf*k_leaf + k_leaf*n_leaf) * self.bytes_per_element * 8.0
+        bits_send = self.mesh_dim * self.p * (m_leaf*k_leaf + k_leaf*n_leaf) * self.bytes_per_element * 8.0
+        E_send_child_buffer = bits_send * self.child_arch.buffer_nJ_per_bit * 2
+        E_send_interconnect = bits_send * self.mesh_nJ_per_bit
         E_send = E_send_child_buffer + E_send_interconnect
+        bits_store = m_leaf*n_leaf*self.p*self.bytes_per_element*8.0
+        E_store = bits_store * (self.buffer_nJ_per_bit+self.mesh_nJ_per_bit)
         E_total = E_prep + E_compute + E_send
 
+        if debug:
+            self.debugprint(f"GEMM: {m},{k},{n}")
+            self.debugprint(f"energy: {energy2str(E_total)}, E_prep: {energy2str(E_prep)}, E_compute: {energy2str(E_compute)}, E_send: {energy2str(E_send)}")
+            self.debugprint(f"buffer load store bits: {(bits_prep_buffer_read+bits_store)}")
+            self.debugprint(f"child buffer load store bits: {bits_prep_buffer_read + bits_send*2 + bits_store}")
+            self.debugprint(f"interconnect transfer bits: {(bits_perp_interconnect+bits_send+bits_store)}")
         return latency, E_total
     
 
@@ -197,14 +211,14 @@ class Arch(Arch_base):
         else:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n, debug)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug, general_tiling)
-        if debug:
-            self.debugprint(f"latency per iteration: {T_tile}, energy per iteration: {E_tile}")
+        # if debug:
+        #     self.debugprint(f"latency per iteration: {T_tile}, energy per iteration: {E_tile}")
         return T_tile*iteration, E_tile*iteration
 
     
     
     def print(self):
-        self.debugprint(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={self.buffer_bw_GBps}GBps, mesh_bw={self.mesh_bw_GBps}GBps, mesh_nJ_per_bit={self.mesh_nJ_per_bit}nJ, buffer_nJ_per_bit={self.buffer_nJ_per_bit}nJ, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
+        self.debugprint(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={GBps2str(self.buffer_bw_GBps)}, mesh_bw={GBps2str(self.mesh_bw_GBps)}, mesh_E_per_bit={energy2str(self.mesh_nJ_per_bit)}, buffer_E_per_bit={energy2str(self.buffer_nJ_per_bit)}, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 
@@ -219,12 +233,12 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
     if debug:
         print("================Arch=====================")
         arch.print()
-        print("----------------Problem---------------------")
-        print(f"top level problem: {m},{k},{n}")
+        print("----------------GEMM Workload---------------------")
+        print(f"top level GEMM: {m},{k},{n}")
     T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug, general_tiling)
     if debug:
-        print(f"s for top level problem: {T_top*1e-9}")
-        print(f"J for top level problem: {E_total*1e-9}")
+        print(f"s for top level GEMM: {T_top*1e-9}")
+        print(f"J for top level GEMM: {E_total*1e-9}")
         print("=====================================")
     return T_top*1e-9, E_total*1e-9
     
