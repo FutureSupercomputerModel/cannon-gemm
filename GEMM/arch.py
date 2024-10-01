@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from GEMM.arch_base import Arch_base
+from GEMM.arch_base import Arch_base, Log
 from GEMM.leaf import Leaf
 from helper.myMath import *
 class Arch(Arch_base):
@@ -51,7 +51,14 @@ class Arch(Arch_base):
         self.child_arch = child_arch
         self.level = child_arch.level + 1
         self.min_gemm_size = self.mesh_dim * child_arch.min_gemm_size
+
+        self.log = Log()
     
+    def update_log_recursively(self, num_iter):
+        self.log.update(num_iter)
+        if self.child_arch is not None:
+            self.child_arch.update_log_recursively(num_iter)
+
     
     def get_max_gemm_size(self):
         min_problem_dim = self.mesh_dim * self.child_arch.min_gemm_size
@@ -100,8 +107,7 @@ class Arch(Arch_base):
             latency = max(T_prep, T_compute, T_send, T_store)
         else:
             latency = T_prep + T_compute + T_send + T_store
-        if debug:
-            self.debugprint(f"latency: {latency}, T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
+            
         #energy
         bits_prep_buffer_read = (m_leaf*k_leaf+k_leaf*n_leaf)*self.p*self.bytes_per_element*8.0
         E_prep_buffer_read = bits_prep_buffer_read * self.buffer_nJ_per_bit
@@ -117,8 +123,14 @@ class Arch(Arch_base):
         E_store = bits_store * (self.buffer_nJ_per_bit+self.mesh_nJ_per_bit)
         E_total = E_prep + E_compute + E_send
 
+        #update logs
+        self.log.buffer_access += bits_prep_buffer_read + bits_store
+        self.log.interconnect_bits += bits_prep_buffer_read + bits_perp_interconnect + bits_send + bits_store
+        self.child_arch.update_log_recursively(self.mesh_dim*self.p)
+
         if debug:
             self.debugprint(f"GEMM: {m},{k},{n}")
+            self.debugprint(f"latency: {latency}, T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
             self.debugprint(f"energy: {energy2str(E_total)}, E_prep: {energy2str(E_prep)}, E_compute: {energy2str(E_compute)}, E_send: {energy2str(E_send)}")
             self.debugprint(f"buffer load store bits: {(bits_prep_buffer_read+bits_store)}")
             self.debugprint(f"child buffer load store bits: {bits_prep_buffer_read + bits_send*2 + bits_store}")
@@ -211,6 +223,7 @@ class Arch(Arch_base):
         else:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n, debug)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug, general_tiling)
+        self.update_log_recursively(iteration)
         # if debug:
         #     self.debugprint(f"latency per iteration: {T_tile}, energy per iteration: {E_tile}")
         return T_tile*iteration, E_tile*iteration
@@ -222,6 +235,10 @@ class Arch(Arch_base):
         if self.child_arch is not None:
             self.child_arch.print()
 
+    def print_log(self):
+        self.debugprint(self.log.toString())
+        if self.child_arch is not None:
+            self.child_arch.print_log()
 
 # cmos_arch = Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
 # # cmos_arch_ideal = arch.Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
@@ -239,6 +256,8 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
     if debug:
         print(f"s for top level GEMM: {T_top*1e-9}")
         print(f"J for top level GEMM: {E_total*1e-9}")
+        print("----------------Accumulated Logs------------------")
+        arch.print_log()
         print("=====================================")
     return T_top*1e-9, E_total*1e-9
     
