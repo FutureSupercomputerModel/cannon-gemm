@@ -53,12 +53,18 @@ class Arch(Arch_base):
         self.min_gemm_size = self.mesh_dim * child_arch.min_gemm_size
 
         self.log = Log()
-    
-    def update_log_recursively(self, num_iter):
-        self.log.update(num_iter)
-        if self.child_arch is not None:
-            self.child_arch.update_log_recursively(num_iter)
 
+        self.total_chip_area = self.child_arch.total_chip_area * mesh_dim * mesh_dim
+    
+    def update_data_transfer_log_recursively(self, num_iter):
+        self.log.update_data_transfer(num_iter)
+        if self.child_arch is not None:
+            self.child_arch.update_data_transfer_log_recursively(num_iter)
+
+    def update_latency_log_recursively(self, num_iter):
+        self.log.update_latency(num_iter)
+        if self.child_arch is not None:
+            self.child_arch.update_latency_log_recursively(num_iter)
     
     def get_max_gemm_size(self):
         min_problem_dim = self.mesh_dim * self.child_arch.min_gemm_size
@@ -85,7 +91,6 @@ class Arch(Arch_base):
     
     def cannon_gemm(self, m_in,k_in,n_in,debug:bool, general_tiling):
         m,k,n,m_leaf,k_leaf,n_leaf = self.spatial_tile_gemm(m_in,k_in,n_in,debug)
-
         T_prep_A = self.ns_setup_interconnect + max(m*k/self.p/self.mesh_bw, m*k/self.p/self.child_arch.buffer_bw)#time to set up connection + max ( time for interconnect send, time for child buffer receive)
         T_prep_B = self.ns_setup_interconnect + max(k*n/self.p/self.mesh_bw, k*n/self.p/self.child_arch.buffer_bw)
         T_prep = max(T_prep_A+T_prep_B, (m*k+k*n)/self.buffer_bw )#time to load A and B, potentially bound by dram bandwidth
@@ -126,9 +131,16 @@ class Arch(Arch_base):
         #update logs
         self.log.buffer_access += bits_prep_buffer_read + bits_store
         self.log.interconnect_bits += bits_prep_buffer_read + bits_perp_interconnect + bits_send + bits_store
-        self.child_arch.update_log_recursively(self.mesh_dim*self.p)
+        self.child_arch.update_data_transfer_log_recursively(self.mesh_dim*self.p)
+        self.log.T_prep += T_prep
+        self.log.T_compute += T_compute
+        self.log.T_send += T_send
+        self.log.T_store += T_store
+        self.child_arch.update_latency_log_recursively(self.mesh_dim)
+        # self.child_arch.log.buffer_access += bits_prep_buffer_read + bits_send*2 + bits_store
 
         if debug:
+            self.debugprint("------------------Cannon GEMM------------------")
             self.debugprint(f"GEMM: {m},{k},{n}")
             self.debugprint(f"latency: {latency}, T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
             self.debugprint(f"energy: {energy2str(E_total)}, E_prep: {energy2str(E_prep)}, E_compute: {energy2str(E_compute)}, E_send: {energy2str(E_send)}")
@@ -217,13 +229,15 @@ class Arch(Arch_base):
     def get_gemm_latency_energy(self, m,k,n, debug:bool, general_tiling=True):
         #report buffer usage
         if debug:
+            self.debugprint("------------------Tiling------------------")
             self.debugprint(f"buffer usage: {bytes2str((m*k+k*n+m*n)*self.bytes_per_element)}/{bytes2str(self.buffer_size_bytes)}")
         if general_tiling:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm_general(m,k,n, debug)
         else:
             (m_tile, k_tile, n_tile, iteration) = self.temp_tile_gemm(m,k,n, debug)
         T_tile, E_tile=self.cannon_gemm(m_tile, k_tile, n_tile, debug, general_tiling)
-        self.update_log_recursively(iteration)
+        self.update_data_transfer_log_recursively(iteration)
+        self.update_latency_log_recursively(iteration)
         # if debug:
         #     self.debugprint(f"latency per iteration: {T_tile}, energy per iteration: {E_tile}")
         return T_tile*iteration, E_tile*iteration
@@ -231,7 +245,7 @@ class Arch(Arch_base):
     
     
     def print(self):
-        self.debugprint(f"mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={GBps2str(self.buffer_bw_GBps)}, mesh_bw={GBps2str(self.mesh_bw_GBps)}, mesh_E_per_bit={energy2str(self.mesh_nJ_per_bit)}, buffer_E_per_bit={energy2str(self.buffer_nJ_per_bit)}, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
+        self.debugprint(f"total_chip_area={self.total_chip_area/1e8}cm^2, mesh_dim={self.mesh_dim}, buffer_size={bytes2str(self.buffer_size_bytes)}, buffer_bw={GBps2str(self.buffer_bw_GBps)}, mesh_bw={GBps2str(self.mesh_bw_GBps)}, mesh_E_per_bit={energy2str(self.mesh_nJ_per_bit)}, buffer_E_per_bit={energy2str(self.buffer_nJ_per_bit)}, min_gemm_size={self.min_gemm_size}, max_gemm_size: {self.get_max_gemm_size()}")
         if self.child_arch is not None:
             self.child_arch.print()
 
@@ -240,6 +254,10 @@ class Arch(Arch_base):
         if self.child_arch is not None:
             self.child_arch.print_log()
 
+    def reset_log(self):
+        self.log = Log()
+        if self.child_arch is not None:
+            self.child_arch.reset_log()
 # cmos_arch = Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*4.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024, buffer_bw=200*4.0*3)
 # # cmos_arch_ideal = arch.Arch(buffer_bw=64.0*90.0*2, ns_setup_interconnect=1.0, mesh_bw=64.0*3, mesh_H=90.0, mesh_W=90.0, pe_arr_H=200.0, pe_arr_W=200.0, pe_freq=4.0, buffer_size=20.0*1024*1024)
 # imec_arch = Arch(buffer_bw=1000000, ns_setup_interconnect=1.0, mesh_bw=200.0*30.0, mesh_dim=90.0, pe_arr_dim=200.0, pe_freq=30.0, buffer_size=20.0*1024*1024, buffer_bw=200*30.0*3)
@@ -247,6 +265,7 @@ class Arch(Arch_base):
 
 #return time in s and energy in J
 def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
+    arch.reset_log()
     if debug:
         print("================Arch=====================")
         arch.print()
@@ -254,10 +273,12 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
         print(f"top level GEMM: {m},{k},{n}")
     T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug, general_tiling)
     if debug:
-        print(f"s for top level GEMM: {T_top*1e-9}")
-        print(f"J for top level GEMM: {E_total*1e-9}")
+        
         print("----------------Accumulated Logs------------------")
         arch.print_log()
+        print("----------------Top Level GEMM------------------")
+        print(f"s for top level GEMM: {T_top*1e-9}")
+        print(f"J for top level GEMM: {E_total*1e-9}")
         print("=====================================")
     return T_top*1e-9, E_total*1e-9
     

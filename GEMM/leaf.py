@@ -17,7 +17,7 @@ class Leaf(Arch_base):
     # min_gemm_size = pe_arr_dim
     # buffer_bw = buffer_width*buffer_freq/8.0 #bytes per ns
 
-    def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int) -> None:
+    def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int, buffer_bit_area:float, mac_area:float) -> None:
         self.pe_arr_dim = pe_arr_dim
         self.buffer_size_bytes = str2bytes(buffer_size)
         self.buffer_size_elems = self.buffer_size_bytes/bytes_per_element
@@ -34,12 +34,19 @@ class Leaf(Arch_base):
         self.child_arch = None
         self.level = 0
         self.log = Log()
+
+        self.buffer_area = self.buffer_size_bytes*buffer_bit_area
+        self.mac_area = self.pe_arr_dim*self.pe_arr_dim*mac_area
+        self.total_chip_area = max(self.buffer_area, self.mac_area)
     
-    def update_log_recursively(self, num_iter):
-        self.log.update(num_iter)
-        
+    def update_data_transfer_log_recursively(self, num_iter):
+        self.log.update_data_transfer(num_iter)
+
+    def update_latency_log_recursively(self, num_iter):
+        self.log.update_latency(num_iter)
+
     def print(self):
-        self.debugprint(f"pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {GBps2str(self.buffer_bw_GBps)}, "
+        self.debugprint(f"total_chip_area: {self.total_chip_area/1e8}cm^2, pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {GBps2str(self.buffer_bw_GBps)}, "
                 f"pe_freq: {self.pe_freq}GHz,  E_per_mac: {energy2str(self.nJ_per_mac)}, "
                 f"interconnect_E_per_bit: {energy2str(self.interconnect_nJ_per_bit)}, buffer_E_per_bit: {energy2str(self.buffer_nJ_per_bit)}, min_gemm_size: {self.min_gemm_size}, precision: {self.bytes_per_element*8},"
                 f"max_gemm_size: {self.get_max_gemm_size()}")
@@ -51,8 +58,7 @@ class Leaf(Arch_base):
         compute_time = M*K*N/self.pe_arr_dim/self.pe_arr_dim/self.pe_freq
         buffer_time = (M*K+K*N+M*N)/self.buffer_bw
         time = max(compute_time, buffer_time)
-        if debug:
-            self.debugprint(f"latency: {time}, T_compute: {compute_time}, T_buffer: {buffer_time}")
+            
         # energy = (M*K*N*self.nJ_per_mac + (M*K+K*N+M*N)*(self.interconnect_nJ_per_bit + self.buffer_nJ_per_bit))
         compute_energy = M*K*N*self.nJ_per_mac
         buffer_access_bits = (M*K+K*N+M*N)*self.bytes_per_element*8
@@ -63,8 +69,14 @@ class Leaf(Arch_base):
         self.log.mac += M*K*N
         self.log.buffer_access += buffer_access_bits
         self.log.interconnect_bits += buffer_access_bits
+        self.log.T_prep += (M*K+K*N)/self.buffer_bw
+        self.log.T_compute += compute_time
+        self.log.T_send += 0
+        self.log.T_store += M*N/self.buffer_bw
         if debug:
+            self.debugprint("------------------GEMM------------------")
             self.debugprint(f"GEMM: {M},{K},{N}")
+            self.debugprint(f"latency: {time}, T_compute: {compute_time}, T_buffer: {buffer_time}")
             self.debugprint(f"energy: {energy2str(energy)}, E_compute: {energy2str(compute_energy)}, E_buffer: {energy2str(buffer_energy)}")
             self.debugprint(f"buffer load store bits: {buffer_access_bits}")
             self.debugprint(f"interconnect transfer bits: {buffer_access_bits}")
@@ -77,6 +89,7 @@ class Leaf(Arch_base):
         N = math.ceil(N/(self.min_gemm_size)) * self.min_gemm_size
         if debug:
             #report buffer usage
+            self.debugprint("------------------Tiling------------------")
             self.debugprint(f"buffer usage: {bytes2str((M*K+K*N+M*N)*self.bytes_per_element)}/{bytes2str(self.buffer_size_bytes)}")
         # leaf_tech = 'cmos-gemm-7nm'
         # energy, cycles = run_leaf_modeling(leaf_tech, M, K, N)
@@ -92,3 +105,6 @@ class Leaf(Arch_base):
         min_problem_size_per_leaf = self.min_gemm_size*self.min_gemm_size*3
         scale_up_factor = math.floor(math.sqrt(self.buffer_size_elems / min_problem_size_per_leaf))
         return (self.min_gemm_size*scale_up_factor, self.min_gemm_size*scale_up_factor, self.min_gemm_size*scale_up_factor)
+    
+    def reset_log(self):
+        self.log = Log()

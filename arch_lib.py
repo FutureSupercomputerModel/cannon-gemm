@@ -8,7 +8,9 @@ leaf_cmos = Leaf(pe_arr_dim=200.0,
                       nJ_per_mac=0.38e-3, 
                       interconnect_nJ_per_bit=0.1e-3, 
                       buffer_nJ_per_bit=0.5e-6, 
-                      bytes_per_element=2)
+                      bytes_per_element=2,
+                      buffer_bit_area=0.03125,
+                      mac_area=0)
 leaf_imec = Leaf(pe_arr_dim=200.0, 
                       buffer_size='20.0MB', 
                       buffer_bw = f'73.34TBps',
@@ -16,7 +18,9 @@ leaf_imec = Leaf(pe_arr_dim=200.0,
                       nJ_per_mac=14e-6, 
                       interconnect_nJ_per_bit=1e-8, 
                       buffer_nJ_per_bit=0.021e-6, 
-                      bytes_per_element=2)
+                      bytes_per_element=2,
+                      buffer_bit_area=2.0,
+                      mac_area=6700)
 
 
 blade_imec = Arch(mesh_dim=9.0, 
@@ -42,7 +46,9 @@ leaf_imec_large = Leaf(pe_arr_dim=100.0,
                       nJ_per_mac=14e-6, 
                       interconnect_nJ_per_bit=1e-8, 
                       buffer_nJ_per_bit=0.021e-6, 
-                      bytes_per_element=2)
+                      bytes_per_element=2,
+                      buffer_bit_area=2.0,
+                      mac_area=6700)
 blade_imec_large = Arch(mesh_dim=18.0, 
                         mesh_bw='73.34TBps', 
                         buffer_size="80GB", 
