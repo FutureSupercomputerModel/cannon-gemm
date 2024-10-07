@@ -20,6 +20,16 @@ class Log:
         self.T_store *= num_iter
     def toString(self):
         return f"T_prep: {self.T_prep}, T_compute: {self.T_compute}, T_send: {self.T_send}, T_store: {self.T_store}, buffer_access: {self.buffer_access}, interconnect_bits: {self.interconnect_bits}, mac: {self.mac}"
+    def to_dict(self):
+        return {
+            "T_prep": self.T_prep,
+            "T_compute": self.T_compute,
+            "T_send": self.T_send,
+            "T_store": self.T_store,
+            "buffer_access": self.buffer_access,
+            "interconnect_bits": self.interconnect_bits,
+            "mac": self.mac
+        }
 class Arch_base:
     child_arch=None
     buffer_bw=None

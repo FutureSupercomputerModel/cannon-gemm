@@ -1,8 +1,10 @@
+import copy
 import math
 import numpy as np
 from GEMM.arch_base import Arch_base, Log
 from GEMM.leaf import Leaf
 from helper.myMath import *
+import json
 class Arch(Arch_base):
     # #Buffer
     # buffer_size = 8.0*1024*1024*1024 #8GB
@@ -24,7 +26,7 @@ class Arch(Arch_base):
 
 
     def __init__(self, mesh_dim:float, mesh_bw:str, buffer_size:str, buffer_bw:str, 
-                 mesh_nJ_per_bit:float, buffer_nJ_per_bit:float, 
+                 mesh_E_per_bit:float, buffer_E_per_bit:float, 
                  child_arch:Arch_base,
                  ns_setup_interconnect:float=0,
                  roofline:bool=True,
@@ -37,8 +39,8 @@ class Arch(Arch_base):
         
 
         #tech params
-        self.mesh_nJ_per_bit = mesh_nJ_per_bit
-        self.buffer_nJ_per_bit = buffer_nJ_per_bit
+        self.mesh_nJ_per_bit = str2energy(mesh_E_per_bit)
+        self.buffer_nJ_per_bit = str2energy(buffer_E_per_bit)
 
         self.ns_setup_interconnect = ns_setup_interconnect
 
@@ -56,6 +58,20 @@ class Arch(Arch_base):
 
         self.total_chip_area = self.child_arch.total_chip_area * mesh_dim * mesh_dim
     
+    def to_dict(self):
+        return {
+            "mesh_dim": self.mesh_dim,
+            "mesh_bw": GBps2str(self.mesh_bw_GBps),
+            "buffer_size": bytes2str(self.buffer_size_bytes),
+            "buffer_bw": GBps2str(self.buffer_bw_GBps),
+            "mesh_E_per_bit": energy2str(self.mesh_nJ_per_bit),
+            "buffer_E_per_bit": energy2str(self.buffer_nJ_per_bit),
+            "ns_setup_interconnect": self.ns_setup_interconnect,
+            "roofline": self.roofline,
+            "total_chip_area": f"{self.total_chip_area/1e8}cm^2",
+            "level": self.level,
+            "child_arch": self.child_arch.to_dict()
+        }
     def update_data_transfer_log_recursively(self, num_iter):
         self.log.update_data_transfer(num_iter)
         if self.child_arch is not None:
@@ -73,20 +89,23 @@ class Arch(Arch_base):
         return (min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor, min_problem_dim*scale_up_factor)
 
     def spatial_tile_gemm(self, m_in,k_in,n_in,debug:bool):
-        # pad m to be multiple of mesh_dim * pe_arr_dim
-        m = math.ceil(m_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
-        # pad n to be multiple of mesh_dim * pe_arr_dim
-        n = math.ceil(n_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
-        # pad k to be multiple of mesh_dim * pe_arr_dim
-        k = math.ceil(k_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
-        if debug:
-            self.debugprint(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
+        # # pad m to be multiple of mesh_dim * pe_arr_dim
+        # m = math.ceil(m_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
+        # # pad n to be multiple of mesh_dim * pe_arr_dim
+        # n = math.ceil(n_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
+        # # pad k to be multiple of mesh_dim * pe_arr_dim
+        # k = math.ceil(k_in/(self.mesh_dim*self.child_arch.min_gemm_size)) * self.mesh_dim * self.child_arch.min_gemm_size
+        # if debug:
+        #     self.debugprint(f"padding: from {m_in}, {k_in}, {n_in} to padded problem: {m}, {k}, {n}")
         #tile m, n to leaf problems
-        m_leaf = m/self.mesh_dim
-        k_leaf = k/self.mesh_dim
-        n_leaf = n/self.mesh_dim
+        m_leaf = math.ceil(m_in/self.mesh_dim)
+        k_leaf = math.ceil(k_in/self.mesh_dim)
+        n_leaf = math.ceil(n_in/self.mesh_dim)
+        m = m_leaf * self.mesh_dim
+        k = k_leaf * self.mesh_dim
+        n = n_leaf * self.mesh_dim
         if debug:
-            self.debugprint(f"spatial tiling: from {m}, {k}, {n}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
+            self.debugprint(f"spatial tiling: from {m_in}, {k_in}, {n_in}, to leaf problem: {m_leaf}, {k_leaf}, {n_leaf}")
         return (m, k, n, m_leaf, k_leaf, n_leaf)
     
     def cannon_gemm(self, m_in,k_in,n_in,debug:bool, general_tiling):
@@ -141,7 +160,7 @@ class Arch(Arch_base):
 
         if debug:
             self.debugprint("------------------Cannon GEMM------------------")
-            self.debugprint(f"GEMM: {m},{k},{n}")
+            self.debugprint(f"GEMM: {m_in},{k_in},{n_in} ({m},{k},{n})")
             self.debugprint(f"latency: {latency}, T_prep: {T_prep}, T_compute: {T_compute}, T_send: {T_send}, T_store: {T_store}")
             self.debugprint(f"energy: {energy2str(E_total)}, E_prep: {energy2str(E_prep)}, E_compute: {energy2str(E_compute)}, E_send: {energy2str(E_send)}")
             self.debugprint(f"buffer load store bits: {(bits_prep_buffer_read+bits_store)}")
@@ -272,13 +291,26 @@ def top_level_gemm(m,k,n, arch: Arch, debug:bool, general_tiling=True):
         print("----------------GEMM Workload---------------------")
         print(f"top level GEMM: {m},{k},{n}")
     T_top, E_total=arch.get_gemm_latency_energy(m, k, n, debug, general_tiling)
+    T_top *= 1e-9
+    E_total *= 1e-9
+    log = {
+        "arch": arch.to_dict(),
+        "T_top": T_top,
+        "E_total": E_total
+    }
+    log[f"Level {arch.level} logs"] = arch.log.to_dict()
+    arch_copy = copy.deepcopy(arch)
+    while arch_copy.child_arch is not None:
+        arch_copy = arch_copy.child_arch
+        log[f"Level {arch_copy.level} logs"] = arch_copy.log.to_dict() 
+    log = json.dumps(log, indent=4)
     if debug:
         
         print("----------------Accumulated Logs------------------")
         arch.print_log()
         print("----------------Top Level GEMM------------------")
-        print(f"s for top level GEMM: {T_top*1e-9}")
-        print(f"J for top level GEMM: {E_total*1e-9}")
+        print(f"s for top level GEMM: {T_top}")
+        print(f"J for top level GEMM: {E_total}")
         print("=====================================")
-    return T_top*1e-9, E_total*1e-9
+    return T_top*1e-9, E_total*1e-9, log
     

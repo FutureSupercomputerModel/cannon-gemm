@@ -17,16 +17,16 @@ class Leaf(Arch_base):
     # min_gemm_size = pe_arr_dim
     # buffer_bw = buffer_width*buffer_freq/8.0 #bytes per ns
 
-    def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, nJ_per_mac:float, interconnect_nJ_per_bit:float, buffer_nJ_per_bit:float, bytes_per_element:int, buffer_bit_area:float, mac_area:float) -> None:
+    def __init__(self, pe_arr_dim:float, buffer_size:str, buffer_bw:str, pe_freq:float, E_per_mac:float, interconnect_E_per_bit:float, buffer_E_per_bit:float, bytes_per_element:int, buffer_bit_area:float, mac_area:float) -> None:
         self.pe_arr_dim = pe_arr_dim
         self.buffer_size_bytes = str2bytes(buffer_size)
         self.buffer_size_elems = self.buffer_size_bytes/bytes_per_element
         self.buffer_bw_GBps = str2GBps(buffer_bw)
         self.buffer_bw = self.buffer_bw_GBps/bytes_per_element #elements per ns
         self.pe_freq = pe_freq
-        self.nJ_per_mac = nJ_per_mac
-        self.interconnect_nJ_per_bit = interconnect_nJ_per_bit
-        self.buffer_nJ_per_bit = buffer_nJ_per_bit
+        self.nJ_per_mac = str2energy(E_per_mac)
+        self.interconnect_nJ_per_bit = str2energy(interconnect_E_per_bit)
+        self.buffer_nJ_per_bit = str2energy(buffer_E_per_bit)
         self.bytes_per_element = bytes_per_element
 
 
@@ -39,6 +39,22 @@ class Leaf(Arch_base):
         self.mac_area = self.pe_arr_dim*self.pe_arr_dim*mac_area
         self.total_chip_area = max(self.buffer_area, self.mac_area)
     
+    def to_dict(self):
+        return {
+            "pe_arr_dim": self.pe_arr_dim,
+            "buffer_size": self.buffer_size_bytes,
+            "buffer_bw": self.buffer_bw_GBps,
+            "pe_freq": self.pe_freq,
+            "E_per_mac": self.nJ_per_mac,
+            "interconnect_E_per_bit": self.interconnect_nJ_per_bit,
+            "buffer_E_per_bit": self.buffer_nJ_per_bit,
+            "bytes_per_element": self.bytes_per_element,
+            "min_gemm_size": self.min_gemm_size,
+            "buffer_area": self.buffer_area,
+            "mac_area": self.mac_area,
+            "total_chip_area": self.total_chip_area
+        }
+    
     def update_data_transfer_log_recursively(self, num_iter):
         self.log.update_data_transfer(num_iter)
 
@@ -46,7 +62,7 @@ class Leaf(Arch_base):
         self.log.update_latency(num_iter)
 
     def print(self):
-        self.debugprint(f"total_chip_area: {self.total_chip_area/1e8}cm^2, pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {GBps2str(self.buffer_bw_GBps)}, "
+        self.debugprint(f"total_chip_area: {self.total_chip_area/1e8}cm^2 (mac area: {self.mac_area/1e8}, buffer area: {self.buffer_area/1e8}), pe_arr_dim: {self.pe_arr_dim}, buffer_size: {bytes2str(self.buffer_size_bytes)}, buffer_bw: {GBps2str(self.buffer_bw_GBps)}, "
                 f"pe_freq: {self.pe_freq}GHz,  E_per_mac: {energy2str(self.nJ_per_mac)}, "
                 f"interconnect_E_per_bit: {energy2str(self.interconnect_nJ_per_bit)}, buffer_E_per_bit: {energy2str(self.buffer_nJ_per_bit)}, min_gemm_size: {self.min_gemm_size}, precision: {self.bytes_per_element*8},"
                 f"max_gemm_size: {self.get_max_gemm_size()}")
@@ -84,9 +100,9 @@ class Leaf(Arch_base):
         return energy, time
     
     def get_gemm_latency_energy(self, M:int, K:int, N:int, debug:bool, general_tiling:bool):
-        M = math.ceil(M/(self.min_gemm_size)) * self.min_gemm_size
-        K = math.ceil(K/(self.min_gemm_size)) * self.min_gemm_size
-        N = math.ceil(N/(self.min_gemm_size)) * self.min_gemm_size
+        # M = math.ceil(M/(self.min_gemm_size)) * self.min_gemm_size
+        # K = math.ceil(K/(self.min_gemm_size)) * self.min_gemm_size
+        # N = math.ceil(N/(self.min_gemm_size)) * self.min_gemm_size
         if debug:
             #report buffer usage
             self.debugprint("------------------Tiling------------------")
